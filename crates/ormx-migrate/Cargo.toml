@@ -21,3 +21,4 @@ sha2.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+uuid.workspace = true

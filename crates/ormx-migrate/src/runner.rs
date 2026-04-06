@@ -4,33 +4,82 @@ use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use std::path::{Path, PathBuf};
 
-use crate::{diff, snapshot, sql, state};
+use crate::{diff, shadow, snapshot, sql, state};
+
+/// How to determine the "current applied state" for diffing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MigrationStrategy {
+    /// Create a temporary database, replay all migrations, introspect.
+    /// Accurate even when migration.sql files are manually edited.
+    /// Requires a database connection.
+    ShadowDatabase,
+
+    /// Use the JSON schema snapshot stored alongside each migration.
+    /// Fast and offline, but drifts if migration.sql files are edited.
+    Snapshot,
+}
+
+impl Default for MigrationStrategy {
+    fn default() -> Self {
+        Self::ShadowDatabase
+    }
+}
 
 pub struct MigrationRunner {
     migrations_dir: PathBuf,
     provider: ormx_core::types::DatabaseProvider,
+    strategy: MigrationStrategy,
 }
 
 impl MigrationRunner {
-    pub fn new(migrations_dir: PathBuf, provider: ormx_core::types::DatabaseProvider) -> Self {
+    pub fn new(
+        migrations_dir: PathBuf,
+        provider: ormx_core::types::DatabaseProvider,
+        strategy: MigrationStrategy,
+    ) -> Self {
         Self {
             migrations_dir,
             provider,
+            strategy,
         }
     }
 
-    /// Create a new migration from the diff between the current schema and the latest snapshot.
-    /// Returns the migration directory path if changes were found.
-    pub fn create_migration(
+    /// Create a new migration by diffing the current schema against the applied state.
+    ///
+    /// For `ShadowDatabase` strategy: needs `database_url` to create a temp DB.
+    /// For `Snapshot` strategy: `database_url` is not used.
+    pub async fn create_migration(
         &self,
         current_schema: &ormx_core::schema::Schema,
         name: &str,
+        database_url: Option<&str>,
     ) -> Result<Option<PathBuf>, MigrateError> {
         std::fs::create_dir_all(&self.migrations_dir)
             .map_err(|e| MigrateError::Io(format!("Failed to create migrations dir: {e}")))?;
 
-        let previous = snapshot::load_latest_snapshot(&self.migrations_dir)
-            .unwrap_or_else(|| snapshot::empty_schema(self.provider));
+        // Determine the "applied state" based on strategy
+        let previous = match self.strategy {
+            MigrationStrategy::ShadowDatabase => {
+                let url = database_url.ok_or_else(|| {
+                    MigrateError::Io("Shadow database strategy requires a database URL".to_string())
+                })?;
+
+                let has_migrations = self
+                    .list_migrations()?
+                    .iter()
+                    .any(|m| m.join("migration.sql").exists());
+
+                if has_migrations {
+                    shadow::introspect_via_shadow(url, &self.migrations_dir)
+                        .await
+                        .map_err(|e| MigrateError::Database(e.to_string()))?
+                } else {
+                    snapshot::empty_schema(self.provider)
+                }
+            }
+            MigrationStrategy::Snapshot => snapshot::load_latest_snapshot(&self.migrations_dir)
+                .unwrap_or_else(|| snapshot::empty_schema(self.provider)),
+        };
 
         let steps = diff::diff_schemas(&previous, current_schema, self.provider);
 
@@ -54,7 +103,7 @@ impl MigrationRunner {
         std::fs::write(&sql_path, &sql_content)
             .map_err(|e| MigrateError::Io(format!("Failed to write migration.sql: {e}")))?;
 
-        // Write schema snapshot
+        // Always write a schema snapshot (useful for snapshot mode and as documentation)
         let snapshot_json = snapshot::serialize(current_schema)
             .map_err(|e| MigrateError::Io(format!("Failed to serialize schema: {e}")))?;
         let snapshot_path = migration_dir.join("_schema_snapshot.json");

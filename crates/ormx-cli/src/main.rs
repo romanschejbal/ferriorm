@@ -30,6 +30,12 @@ enum Commands {
         #[command(subcommand)]
         command: MigrateCommands,
     },
+
+    /// Database operations
+    Db {
+        #[command(subcommand)]
+        command: DbCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -39,11 +45,21 @@ enum MigrateCommands {
         /// Migration name
         #[arg(long)]
         name: Option<String>,
+
+        /// Use snapshot strategy instead of shadow database (offline mode)
+        #[arg(long)]
+        snapshot: bool,
     },
     /// Apply pending migrations (production)
     Deploy,
     /// Show migration status
     Status,
+}
+
+#[derive(Subcommand)]
+enum DbCommands {
+    /// Introspect a live database and generate a schema.ormx file
+    Pull,
 }
 
 #[tokio::main]
@@ -58,11 +74,14 @@ async fn main() -> miette::Result<()> {
         Commands::Init { provider } => commands::init::run(&provider).await,
         Commands::Generate => commands::generate::run(&cli.schema).await,
         Commands::Migrate { command } => match command {
-            MigrateCommands::Dev { name } => {
-                commands::migrate::dev(&cli.schema, name.as_deref()).await
+            MigrateCommands::Dev { name, snapshot } => {
+                commands::migrate::dev(&cli.schema, name.as_deref(), snapshot).await
             }
             MigrateCommands::Deploy => commands::migrate::deploy(&cli.schema).await,
             MigrateCommands::Status => commands::migrate::status(&cli.schema).await,
+        },
+        Commands::Db { command } => match command {
+            DbCommands::Pull => commands::db::pull(&cli.schema).await,
         },
     }
 }

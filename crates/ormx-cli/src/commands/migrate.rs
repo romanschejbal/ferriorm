@@ -1,28 +1,39 @@
+use ormx_migrate::MigrationStrategy;
 use std::path::Path;
 
-pub async fn dev(schema_path: &str, name: Option<&str>) -> miette::Result<()> {
+pub async fn dev(schema_path: &str, name: Option<&str>, use_snapshot: bool) -> miette::Result<()> {
     let source = std::fs::read_to_string(schema_path)
         .map_err(|e| miette::miette!("Failed to read {schema_path}: {e}"))?;
 
     let schema = ormx_parser::parse_and_validate(&source)
         .map_err(|e| miette::miette!("Schema error: {e}"))?;
 
+    let strategy = if use_snapshot {
+        println!("Using snapshot strategy (offline mode)");
+        MigrationStrategy::Snapshot
+    } else {
+        println!("Using shadow database strategy");
+        MigrationStrategy::ShadowDatabase
+    };
+
+    let url = resolve_url(&schema.datasource.url)?;
     let migrations_dir = Path::new("migrations").to_path_buf();
-    let runner = ormx_migrate::MigrationRunner::new(migrations_dir, schema.datasource.provider);
+    let runner =
+        ormx_migrate::MigrationRunner::new(migrations_dir, schema.datasource.provider, strategy);
 
     let migration_name = name.unwrap_or("migration");
 
-    // 1. Create migration
     println!("Diffing schema...");
-    match runner.create_migration(&schema, migration_name) {
+    match runner
+        .create_migration(&schema, migration_name, Some(&url))
+        .await
+    {
         Ok(Some(dir)) => {
             println!(
                 "Created migration: {}",
                 dir.file_name().unwrap().to_string_lossy()
             );
 
-            // 2. Apply to database
-            let url = resolve_url(&schema.datasource.url)?;
             let pool = sqlx::PgPool::connect(&url)
                 .await
                 .map_err(|e| miette::miette!("Failed to connect to database: {e}"))?;
@@ -38,7 +49,6 @@ pub async fn dev(schema_path: &str, name: Option<&str>) -> miette::Result<()> {
 
             pool.close().await;
 
-            // 3. Regenerate client
             println!("Regenerating client...");
             super::generate::run(schema_path).await?;
         }
@@ -66,7 +76,11 @@ pub async fn deploy(schema_path: &str) -> miette::Result<()> {
         .map_err(|e| miette::miette!("Failed to connect to database: {e}"))?;
 
     let migrations_dir = Path::new("migrations").to_path_buf();
-    let runner = ormx_migrate::MigrationRunner::new(migrations_dir, schema.datasource.provider);
+    let runner = ormx_migrate::MigrationRunner::new(
+        migrations_dir,
+        schema.datasource.provider,
+        MigrationStrategy::Snapshot, // deploy doesn't need shadow DB
+    );
 
     let applied = runner
         .apply_pending(&pool)
@@ -99,7 +113,11 @@ pub async fn status(schema_path: &str) -> miette::Result<()> {
         .map_err(|e| miette::miette!("Failed to connect to database: {e}"))?;
 
     let migrations_dir = Path::new("migrations").to_path_buf();
-    let runner = ormx_migrate::MigrationRunner::new(migrations_dir, schema.datasource.provider);
+    let runner = ormx_migrate::MigrationRunner::new(
+        migrations_dir,
+        schema.datasource.provider,
+        MigrationStrategy::Snapshot,
+    );
 
     let statuses = runner
         .status(&pool)
@@ -123,7 +141,7 @@ pub async fn status(schema_path: &str) -> miette::Result<()> {
     Ok(())
 }
 
-fn resolve_url(url: &str) -> miette::Result<String> {
+pub fn resolve_url(url: &str) -> miette::Result<String> {
     if url.starts_with("${env:") && url.ends_with('}') {
         let var_name = &url[6..url.len() - 1];
         std::env::var(var_name)
