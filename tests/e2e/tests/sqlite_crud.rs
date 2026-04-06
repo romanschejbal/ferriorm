@@ -804,7 +804,7 @@ async fn test_batch_insert() {
     let pool = setup_db().await;
 
     // Build a batch INSERT using QueryBuilder's push_values
-    let users_data = vec![
+    let users_data = [
         ("u1", "a@test.com", Some("Alice"), 20i64, 1i64),
         ("u2", "b@test.com", Some("Bob"), 25, 1),
         ("u3", "c@test.com", None::<&str>, 30, 0),
