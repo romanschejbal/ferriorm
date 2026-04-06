@@ -15,14 +15,18 @@ exclude = ["examples/basic"]
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/romanschejbal/ferriorm"
+homepage = "https://github.com/romanschejbal/ferriorm"
+keywords = ["orm", "database", "prisma", "codegen", "schema"]
+categories = ["database"]
 
 [workspace.dependencies]
 # Internal crates
-ferriorm-core = { path = "crates/ferriorm-core" }
-ferriorm-parser = { path = "crates/ferriorm-parser" }
-ferriorm-codegen = { path = "crates/ferriorm-codegen" }
-ferriorm-migrate = { path = "crates/ferriorm-migrate" }
-ferriorm-runtime = { path = "crates/ferriorm-runtime" }
+ferriorm-core = { path = "crates/ferriorm-core", version = "0.1.0" }
+ferriorm-parser = { path = "crates/ferriorm-parser", version = "0.1.0" }
+ferriorm-codegen = { path = "crates/ferriorm-codegen", version = "0.1.0" }
+ferriorm-migrate = { path = "crates/ferriorm-migrate", version = "0.1.0" }
+ferriorm-runtime = { path = "crates/ferriorm-runtime", version = "0.1.0" }
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "chrono", "uuid"] }

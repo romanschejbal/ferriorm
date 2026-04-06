@@ -4,6 +4,11 @@ description = "Schema parser for ferriorm ORM - parses .ferriorm files into AST"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../../README.md"
 
 [dependencies]
 ferriorm-core.workspace = true
