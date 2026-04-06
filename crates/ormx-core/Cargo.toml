@@ -1,0 +1,10 @@
+[package]
+name = "ormx-core"
+description = "Core domain types for ormx ORM - zero external dependencies"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Intentionally empty - ormx-core has ZERO external dependencies.
+# This is a hard architectural constraint (onion architecture).

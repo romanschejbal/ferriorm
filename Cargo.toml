@@ -1,0 +1,62 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/ormx-core",
+    "crates/ormx-parser",
+    "crates/ormx-codegen",
+    "crates/ormx-migrate",
+    "crates/ormx-runtime",
+    "crates/ormx-cli",
+]
+exclude = ["examples/basic"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Internal crates
+ormx-core = { path = "crates/ormx-core" }
+ormx-parser = { path = "crates/ormx-parser" }
+ormx-codegen = { path = "crates/ormx-codegen" }
+ormx-migrate = { path = "crates/ormx-migrate" }
+ormx-runtime = { path = "crates/ormx-runtime" }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls"] }
+
+# Async
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Parsing
+pest = "2"
+pest_derive = "2"
+
+# Error handling
+miette = { version = "7", features = ["fancy"] }
+thiserror = "2"
+
+# Code generation
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+prettyplease = "0.2"
+
+# Types
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Crypto
+sha2 = "0.10"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

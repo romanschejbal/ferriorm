@@ -1,0 +1,21 @@
+[package]
+name = "ormx-cli"
+description = "CLI for ormx ORM - init, generate, migrate commands"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ormx"
+path = "src/main.rs"
+
+[dependencies]
+ormx-core.workspace = true
+ormx-parser.workspace = true
+ormx-codegen.workspace = true
+ormx-runtime.workspace = true
+clap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+miette.workspace = true

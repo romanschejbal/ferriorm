@@ -1,0 +1,23 @@
+[package]
+name = "ormx-migrate"
+description = "Migration engine for ormx ORM - schema diffing and SQL generation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["postgres"]
+postgres = ["sqlx/postgres"]
+sqlite = ["sqlx/sqlite"]
+
+[dependencies]
+ormx-core.workspace = true
+ormx-parser.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

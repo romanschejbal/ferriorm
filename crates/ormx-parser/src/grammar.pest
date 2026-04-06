@@ -1,0 +1,71 @@
+// ormx schema grammar
+
+schema = { SOI ~ (block | NEWLINE)* ~ EOI }
+
+block = _{ datasource_block | generator_block | enum_block | model_block }
+
+// ─── Datasource ────────────────────────────────────────────
+datasource_block = { "datasource" ~ identifier ~ "{" ~ NEWLINE* ~ (kv_pair ~ NEWLINE*)* ~ "}" }
+
+// ─── Generator ─────────────────────────────────────────────
+generator_block = { "generator" ~ identifier ~ "{" ~ NEWLINE* ~ (kv_pair ~ NEWLINE*)* ~ "}" }
+
+// ─── Key-value pairs ──────────────────────────────────────
+kv_pair = { identifier ~ "=" ~ value }
+value   = _{ func_call | string_literal | number_literal | boolean_literal | identifier_value }
+func_call      = { identifier ~ "(" ~ (value ~ ("," ~ value)*)? ~ ")" }
+identifier_value = { identifier }
+
+// ─── Enum ──────────────────────────────────────────────────
+enum_block   = { "enum" ~ identifier ~ "{" ~ NEWLINE* ~ (enum_variant ~ NEWLINE*)* ~ "}" }
+enum_variant = { identifier }
+
+// ─── Model ─────────────────────────────────────────────────
+model_block = { "model" ~ identifier ~ "{" ~ NEWLINE* ~ (model_member ~ NEWLINE*)* ~ "}" }
+model_member = _{ block_attribute | field_def }
+
+// ─── Field ─────────────────────────────────────────────────
+field_def  = { identifier ~ field_type ~ field_attribute* }
+field_type = { identifier ~ (list_modifier | optional_modifier)? }
+list_modifier     = { "[]" }
+optional_modifier = { "?" }
+
+// ─── Field attributes ─────────────────────────────────────
+field_attribute = _{ attr_id | attr_unique | attr_updated_at | attr_default | attr_relation | attr_map | attr_db_type }
+
+attr_id         = { "@id" }
+attr_unique     = { "@unique" }
+attr_updated_at = { "@updatedAt" }
+attr_default    = { "@default" ~ "(" ~ default_value ~ ")" }
+attr_relation   = { "@relation" ~ "(" ~ relation_args ~ ")" }
+attr_map        = { "@map" ~ "(" ~ string_literal ~ ")" }
+attr_db_type    = { "@db." ~ identifier ~ ("(" ~ (value ~ ("," ~ value)*)? ~ ")")? }
+
+// ─── Default values ───────────────────────────────────────
+default_value = _{ func_call | string_literal | number_literal | boolean_literal | identifier_value }
+
+// ─── Relation args ────────────────────────────────────────
+relation_args = { relation_arg ~ ("," ~ relation_arg)* }
+relation_arg  = { named_arg }
+named_arg     = { identifier ~ ":" ~ (field_list | value) }
+field_list    = { "[" ~ identifier ~ ("," ~ identifier)* ~ "]" }
+
+// ─── Block attributes ─────────────────────────────────────
+block_attribute = _{ block_attr_index | block_attr_unique | block_attr_map | block_attr_id }
+
+block_attr_index  = { "@@index" ~ "(" ~ field_list ~ ")" }
+block_attr_unique = { "@@unique" ~ "(" ~ field_list ~ ")" }
+block_attr_map    = { "@@map" ~ "(" ~ string_literal ~ ")" }
+block_attr_id     = { "@@id" ~ "(" ~ field_list ~ ")" }
+
+// ─── Terminals ─────────────────────────────────────────────
+identifier     = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+string_literal = @{ "\"" ~ string_inner ~ "\"" }
+string_inner   = @{ (!"\"" ~ !"\\" ~ ANY | "\\" ~ ANY)* }
+number_literal = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+boolean_literal = { "true" | "false" }
+
+// ─── Whitespace & Comments ────────────────────────────────
+WHITESPACE = _{ " " | "\t" }
+COMMENT    = _{ "//" ~ (!NEWLINE ~ ANY)* }
+NEWLINE    = _{ "\r\n" | "\n" }
