@@ -3,7 +3,7 @@
 **A Prisma-inspired ORM for Rust** -- schema-first, type-safe, with automatic code generation.
 
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
-<!-- [![CI](https://github.com/romanschejbal/ormx/actions/workflows/ci.yml/badge.svg)](https://github.com/romanschejbal/ormx/actions/workflows/ci.yml) -->
+[![CI](https://github.com/romanschejbal/ormx/actions/workflows/ci.yml/badge.svg)](https://github.com/romanschejbal/ormx/actions/workflows/ci.yml)
 
 ## Why ormx?
 

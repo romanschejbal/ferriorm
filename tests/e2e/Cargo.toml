@@ -1,0 +1,18 @@
+[package]
+name = "ormx-e2e-tests"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+ormx-core = { path = "../../crates/ormx-core", features = ["serde"] }
+ormx-parser = { path = "../../crates/ormx-parser" }
+ormx-codegen = { path = "../../crates/ormx-codegen" }
+ormx-migrate = { path = "../../crates/ormx-migrate", default-features = false, features = ["sqlite"] }
+ormx-runtime = { path = "../../crates/ormx-runtime", default-features = false, features = ["sqlite"] }
+
+sqlx = { workspace = true, features = ["sqlite"] }
+tokio = { workspace = true }
+syn = { workspace = true }
+tempfile = "3"
+serde_json = { workspace = true }

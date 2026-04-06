@@ -7,6 +7,7 @@ members = [
     "crates/ormx-migrate",
     "crates/ormx-runtime",
     "crates/ormx-cli",
+    "tests/e2e",
 ]
 exclude = ["examples/basic"]
 
