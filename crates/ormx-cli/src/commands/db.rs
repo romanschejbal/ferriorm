@@ -66,7 +66,7 @@ pub async fn pull(schema_path: &str) -> miette::Result<()> {
 }
 
 /// Convert a Schema IR back to .ormx schema text.
-fn schema_to_ormx(schema: &ormx_core::schema::Schema, url: &str) -> String {
+fn schema_to_ormx(schema: &ormx_core::schema::Schema, _url: &str) -> String {
     let mut out = String::new();
 
     // Datasource

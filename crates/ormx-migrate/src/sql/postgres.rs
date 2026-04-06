@@ -140,10 +140,10 @@ fn render_column_def(col: &ColumnDef) -> String {
         s.push_str(" NOT NULL");
     }
 
-    if let Some(default) = &col.default {
-        if !default.is_empty() {
-            s.push_str(&format!(" DEFAULT {default}"));
-        }
+    if let Some(default) = &col.default
+        && !default.is_empty()
+    {
+        s.push_str(&format!(" DEFAULT {default}"));
     }
 
     if col.is_unique {

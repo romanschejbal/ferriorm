@@ -173,14 +173,14 @@ impl MigrationRunner {
                 })?;
                 let checksum = compute_checksum(&sql);
 
-                if let Some(existing) = applied.iter().find(|m| m.name == name) {
-                    if existing.checksum != checksum {
-                        return Err(MigrateError::ChecksumMismatch {
-                            migration: name,
-                            expected: existing.checksum.clone(),
-                            actual: checksum,
-                        });
-                    }
+                if let Some(existing) = applied.iter().find(|m| m.name == name)
+                    && existing.checksum != checksum
+                {
+                    return Err(MigrateError::ChecksumMismatch {
+                        migration: name,
+                        expected: existing.checksum.clone(),
+                        actual: checksum,
+                    });
                 }
                 continue;
             }
@@ -238,14 +238,14 @@ impl MigrationRunner {
                 })?;
                 let checksum = compute_checksum(&sql);
 
-                if let Some(existing) = applied.iter().find(|m| m.name == name) {
-                    if existing.checksum != checksum {
-                        return Err(MigrateError::ChecksumMismatch {
-                            migration: name,
-                            expected: existing.checksum.clone(),
-                            actual: checksum,
-                        });
-                    }
+                if let Some(existing) = applied.iter().find(|m| m.name == name)
+                    && existing.checksum != checksum
+                {
+                    return Err(MigrateError::ChecksumMismatch {
+                        migration: name,
+                        expected: existing.checksum.clone(),
+                        actual: checksum,
+                    });
                 }
                 continue;
             }

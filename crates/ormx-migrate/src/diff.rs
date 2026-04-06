@@ -173,7 +173,7 @@ fn diff_models(
     }
 
     // Dropped tables
-    for (name, _) in &from_map {
+    for name in from_map.keys() {
         if !to_map.contains_key(name) {
             steps.push(MigrationStep::DropTable {
                 name: name.to_string(),
@@ -221,7 +221,7 @@ fn diff_columns(
     }
 
     // Dropped columns
-    for (col_name, _) in &from_cols {
+    for col_name in from_cols.keys() {
         if !to_cols.contains_key(col_name) {
             steps.push(MigrationStep::DropColumn {
                 table: table.to_string(),
@@ -302,25 +302,21 @@ fn collect_foreign_keys(models: &[Model]) -> Vec<ForeignKeyDef> {
 
     for model in models {
         for field in &model.fields {
-            if let Some(rel) = &field.relation {
-                if !rel.fields.is_empty() {
-                    if let Some(related) = model_map.get(rel.related_model.as_str()) {
-                        let fk_col = to_snake_case(&rel.fields[0]);
-                        let ref_col = to_snake_case(&rel.references[0]);
-                        fks.push(ForeignKeyDef {
-                            table: model.db_name.clone(),
-                            constraint_name: format!(
-                                "fk_{}_{}_{}",
-                                model.db_name, related.db_name, fk_col
-                            ),
-                            column: fk_col,
-                            referenced_table: related.db_name.clone(),
-                            referenced_column: ref_col,
-                            on_delete: referential_action_sql(rel.on_delete),
-                            on_update: referential_action_sql(rel.on_update),
-                        });
-                    }
-                }
+            if let Some(rel) = &field.relation
+                && !rel.fields.is_empty()
+                && let Some(related) = model_map.get(rel.related_model.as_str())
+            {
+                let fk_col = to_snake_case(&rel.fields[0]);
+                let ref_col = to_snake_case(&rel.references[0]);
+                fks.push(ForeignKeyDef {
+                    table: model.db_name.clone(),
+                    constraint_name: format!("fk_{}_{}_{}", model.db_name, related.db_name, fk_col),
+                    column: fk_col,
+                    referenced_table: related.db_name.clone(),
+                    referenced_column: ref_col,
+                    on_delete: referential_action_sql(rel.on_delete),
+                    on_update: referential_action_sql(rel.on_update),
+                });
             }
         }
     }

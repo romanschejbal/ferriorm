@@ -95,6 +95,7 @@ struct PgColumn {
 #[derive(sqlx::FromRow)]
 struct PgConstraint {
     table_name: String,
+    #[allow(dead_code)]
     constraint_name: String,
     constraint_type: String,
     column_name: Option<String>,
@@ -115,6 +116,7 @@ struct PgForeignKey {
 #[derive(sqlx::FromRow)]
 struct PgIndex {
     tablename: String,
+    #[allow(dead_code)]
     indexname: String,
     indexdef: String,
 }
@@ -295,10 +297,10 @@ async fn introspect_tables(
 #[cfg(feature = "postgres")]
 fn pg_type_to_field_kind(data_type: &str, udt_name: &str, enums: &[Enum]) -> FieldKind {
     // Check if it's a user-defined enum
-    if data_type == "USER-DEFINED" {
-        if let Some(e) = enums.iter().find(|e| e.db_name == udt_name) {
-            return FieldKind::Enum(e.name.clone());
-        }
+    if data_type == "USER-DEFINED"
+        && let Some(e) = enums.iter().find(|e| e.db_name == udt_name)
+    {
+        return FieldKind::Enum(e.name.clone());
     }
 
     let scalar = match data_type {
@@ -337,9 +339,9 @@ fn parse_pg_default(default: &str) -> Option<DefaultValue> {
     }
 
     // String literal: 'value'::type
-    if d.starts_with('\'') {
-        let end = d[1..].find('\'')?;
-        let val = &d[1..1 + end];
+    if let Some(rest) = d.strip_prefix('\'') {
+        let end = rest.find('\'')?;
+        let val = &rest[..end];
         return Some(DefaultValue::Literal(LiteralValue::String(val.to_string())));
     }
 
@@ -365,13 +367,13 @@ fn parse_pg_default(default: &str) -> Option<DefaultValue> {
 #[cfg(feature = "postgres")]
 fn parse_index_columns(indexdef: &str) -> Vec<String> {
     // indexdef looks like: CREATE INDEX idx_name ON table_name USING btree (col1, col2)
-    if let Some(start) = indexdef.find('(') {
-        if let Some(end) = indexdef.rfind(')') {
-            return indexdef[start + 1..end]
-                .split(',')
-                .map(|s| s.trim().trim_matches('"').to_string())
-                .collect();
-        }
+    if let Some(start) = indexdef.find('(')
+        && let Some(end) = indexdef.rfind(')')
+    {
+        return indexdef[start + 1..end]
+            .split(',')
+            .map(|s| s.trim().trim_matches('"').to_string())
+            .collect();
     }
     vec![]
 }
@@ -503,10 +505,10 @@ async fn introspect_sqlite_tables(pool: &SqlitePool) -> Result<Vec<Model>, sqlx:
                 .fetch_all(pool)
                 .await?;
                 // Only mark as unique if single-column index
-                if idx_cols.len() == 1 {
-                    if let Some(col_name) = &idx_cols[0].name {
-                        unique_columns.insert(col_name.clone());
-                    }
+                if idx_cols.len() == 1
+                    && let Some(col_name) = &idx_cols[0].name
+                {
+                    unique_columns.insert(col_name.clone());
                 }
             }
         }
