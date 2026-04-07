@@ -1,7 +1,7 @@
 mod generated;
 
-use generated::FerriormClient;
 use ferriorm_runtime::prelude::*;
+use generated::FerriormClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -74,7 +74,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     if let Some(u) = &user_with_posts {
-        println!("Found: {} with {:?} posts", u.data.email, u.posts.as_ref().map(|p| p.len()));
+        println!(
+            "Found: {} with {:?} posts",
+            u.data.email,
+            u.posts.as_ref().map(|p| p.len())
+        );
     }
 
     // ─── Regular CRUD still works ──────────────────────────

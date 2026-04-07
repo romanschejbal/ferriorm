@@ -156,6 +156,7 @@ fn gen_batched_load_many(
     id_source_ident: &proc_macro2::Ident,
     lookup_col_str: &str,
     insert_key_ident: &proc_macro2::Ident,
+    fk_optional: bool,
 ) -> TokenStream {
     let related_mod = format_ident!("{}", to_snake_case(&rel.related_model.name));
     let related_struct = format_ident!("{}", rel.related_model.name);
@@ -165,6 +166,19 @@ fn gen_batched_load_many(
         r#"SELECT * FROM "{}" WHERE "{}" IN ("#,
         related_table, lookup_col_str
     );
+
+    // Generate the row insertion code based on whether the FK is optional
+    let insert_row_code = if fk_optional {
+        quote! {
+            if let Some(key) = row.#insert_key_ident.clone() {
+                #load_var.entry(key).or_default().push(row);
+            }
+        }
+    } else {
+        quote! {
+            #load_var.entry(row.#insert_key_ident.clone()).or_default().push(row);
+        }
+    };
 
     quote! {
         let mut #load_var: std::collections::HashMap<String, Vec<super::#related_mod::#related_struct>> = std::collections::HashMap::new();
@@ -186,28 +200,28 @@ fn gen_batched_load_many(
                     }};
                 }
 
+                macro_rules! insert_rows {
+                    ($rows:expr) => {
+                        for row in $rows {
+                            #insert_row_code
+                        }
+                    };
+                }
+
                 match client {
                     DatabaseClient::Postgres(pool) => {
                         let mut qb = build_in_query!(sqlx::Postgres);
                         let related_rows: Vec<super::#related_mod::#related_struct> =
                             qb.build_query_as().fetch_all(pool).await
                                 .map_err(FerriormError::from)?;
-                        for row in related_rows {
-                            #load_var.entry(row.#insert_key_ident.clone())
-                                .or_default()
-                                .push(row);
-                        }
+                        insert_rows!(related_rows);
                     }
                     DatabaseClient::Sqlite(pool) => {
                         let mut qb = build_in_query!(sqlx::Sqlite);
                         let related_rows: Vec<super::#related_mod::#related_struct> =
                             qb.build_query_as().fetch_all(pool).await
                                 .map_err(FerriormError::from)?;
-                        for row in related_rows {
-                            #load_var.entry(row.#insert_key_ident.clone())
-                                .or_default()
-                                .push(row);
-                        }
+                        insert_rows!(related_rows);
                     }
                 }
             }
@@ -311,6 +325,13 @@ fn gen_load_arms(relations: &[RelationInfo<'_>], model: &Model) -> TokenStream {
                 // Batched loading: SELECT * FROM related WHERE fk IN (parent_ids)
                 let load_var = format_ident!("{}_map", to_snake_case(&rel.field.name));
 
+                // Check if the FK column on the child (related) model is optional
+                let child_fk_optional = rel
+                    .related_model
+                    .fields
+                    .iter()
+                    .any(|f| to_snake_case(&f.name) == *fk_col_str && f.is_optional);
+
                 relation_loads.push(gen_batched_load_many(
                     rel,
                     &load_var,
@@ -318,6 +339,7 @@ fn gen_load_arms(relations: &[RelationInfo<'_>], model: &Model) -> TokenStream {
                     &ref_col_ident,
                     fk_col_str,
                     &fk_col_ident,
+                    child_fk_optional,
                 ));
 
                 let ref_col_ident = format_ident!("{}", ref_col_str);
@@ -401,7 +423,7 @@ fn gen_load_arms(relations: &[RelationInfo<'_>], model: &Model) -> TokenStream {
         #(#relation_loads)*
 
         let mut results = Vec::with_capacity(records.len());
-        for mut r in records {
+        for r in records {
             results.push(#with_relations_name {
                 #(#field_inits,)*
                 data: r,
@@ -424,7 +446,7 @@ pub fn gen_find_many_include(model: &Model, schema: &Schema) -> TokenStream {
 
     quote! {
         impl<'a> FindManyQuery<'a> {
-            pub fn include(mut self, include: #include_name) -> FindManyWithIncludeQuery<'a> {
+            pub fn include(self, include: #include_name) -> FindManyWithIncludeQuery<'a> {
                 FindManyWithIncludeQuery {
                     inner: self,
                     include,

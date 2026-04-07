@@ -30,7 +30,6 @@ pub fn generate_client_module(schema: &Schema) -> TokenStream {
 
     quote! {
         use ferriorm_runtime::prelude::*;
-        use ferriorm_runtime::prelude::sqlx;
 
         pub struct FerriormClient {
             inner: DatabaseClient,
@@ -49,21 +48,12 @@ pub fn generate_client_module(schema: &Schema) -> TokenStream {
                 Ok(Self { inner })
             }
 
-            /// Get a reference to the underlying database client.
+            /// Get a reference to the underlying [`DatabaseClient`].
+            ///
+            /// Use this for raw SQL queries via `client().pg_pool()` or
+            /// `client().sqlite_pool()`.
             pub fn client(&self) -> &DatabaseClient {
                 &self.inner
-            }
-
-            /// Get a reference to the underlying PostgreSQL pool for raw queries.
-            #[cfg(feature = "postgres")]
-            pub fn pg_pool(&self) -> Result<&sqlx::PgPool, FerriormError> {
-                self.inner.pg_pool()
-            }
-
-            /// Get a reference to the underlying SQLite pool for raw queries.
-            #[cfg(feature = "sqlite")]
-            pub fn sqlite_pool(&self) -> Result<&sqlx::SqlitePool, FerriormError> {
-                self.inner.sqlite_pool()
             }
 
             #(#model_accessors)*

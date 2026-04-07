@@ -453,11 +453,11 @@ fn generated_model_has_explicit_sqlx_import() {
         "Enums file should have explicit sqlx import"
     );
 
-    // Client file should have explicit sqlx import
+    // Client file should have prelude import (no separate sqlx import needed)
     let client_content = std::fs::read_to_string(output_dir.join("client.rs")).unwrap();
     assert!(
-        client_content.contains("use ferriorm_runtime::prelude::sqlx;"),
-        "Client file should have explicit sqlx import"
+        client_content.contains("use ferriorm_runtime::prelude::*;"),
+        "Client file should have prelude import"
     );
 }
 
