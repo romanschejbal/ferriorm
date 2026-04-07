@@ -18,6 +18,7 @@ pub fn generate_enums_module(enums: &[Enum]) -> TokenStream {
 
     quote! {
         use serde::{Deserialize, Serialize};
+        use ferriorm_runtime::prelude::sqlx;
 
         #(#enum_defs)*
     }

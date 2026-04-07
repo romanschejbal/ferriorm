@@ -223,6 +223,7 @@ fn gen_batched_load_one(
     id_source_ident: &proc_macro2::Ident,
     lookup_col_str: &str,
     insert_key_ident: &proc_macro2::Ident,
+    fk_is_optional: bool,
 ) -> TokenStream {
     let related_mod = format_ident!("{}", to_snake_case(&rel.related_model.name));
     let related_struct = format_ident!("{}", rel.related_model.name);
@@ -233,12 +234,25 @@ fn gen_batched_load_one(
         related_table, lookup_col_str
     );
 
-    quote! {
-        let mut #load_var: std::collections::HashMap<String, super::#related_mod::#related_struct> = std::collections::HashMap::new();
-        if include.#field_name {
+    // When the FK field is optional (Option<String>), use filter_map to skip None values.
+    let ids_collect = if fk_is_optional {
+        quote! {
+            let ids: Vec<String> = records.iter()
+                .filter_map(|r| r.#id_source_ident.clone())
+                .collect();
+        }
+    } else {
+        quote! {
             let ids: Vec<String> = records.iter()
                 .map(|r| r.#id_source_ident.clone())
                 .collect();
+        }
+    };
+
+    quote! {
+        let mut #load_var: std::collections::HashMap<String, super::#related_mod::#related_struct> = std::collections::HashMap::new();
+        if include.#field_name {
+            #ids_collect
 
             if !ids.is_empty() {
                 macro_rules! build_in_query {
@@ -321,10 +335,12 @@ fn gen_load_arms(relations: &[RelationInfo<'_>], model: &Model) -> TokenStream {
                 let fk_field = format_ident!("{}", fk_col_str);
 
                 // Check if this model has the FK field as a scalar
-                let has_fk = model
+                let fk_model_field = model
                     .fields
                     .iter()
-                    .any(|f| to_snake_case(&f.name) == *fk_col_str && f.is_scalar());
+                    .find(|f| to_snake_case(&f.name) == *fk_col_str && f.is_scalar());
+                let has_fk = fk_model_field.is_some();
+                let fk_is_optional = fk_model_field.map(|f| f.is_optional).unwrap_or(false);
 
                 if has_fk {
                     relation_loads.push(gen_batched_load_one(
@@ -334,15 +350,26 @@ fn gen_load_arms(relations: &[RelationInfo<'_>], model: &Model) -> TokenStream {
                         &fk_field,
                         ref_col_str,
                         &ref_col_ident,
+                        fk_is_optional,
                     ));
 
-                    field_inits.push(quote! {
-                        #field_name: if include.#field_name {
-                            #load_var.remove(&r.#fk_field).map(Some).unwrap_or(None)
-                        } else {
-                            None
-                        }
-                    });
+                    if fk_is_optional {
+                        field_inits.push(quote! {
+                            #field_name: if include.#field_name {
+                                r.#fk_field.as_ref().and_then(|fk| #load_var.remove(fk))
+                            } else {
+                                None
+                            }
+                        });
+                    } else {
+                        field_inits.push(quote! {
+                            #field_name: if include.#field_name {
+                                #load_var.remove(&r.#fk_field).map(Some).unwrap_or(None)
+                            } else {
+                                None
+                            }
+                        });
+                    }
                 } else {
                     // The FK is on the other side (e.g., User.profile where Profile has userId)
                     // Batch load: SELECT * FROM profiles WHERE user_id IN (user_ids)
@@ -355,6 +382,7 @@ fn gen_load_arms(relations: &[RelationInfo<'_>], model: &Model) -> TokenStream {
                         &ref_col_ident,
                         fk_col_str,
                         &fk_col_ident,
+                        false,
                     ));
 
                     field_inits.push(quote! {

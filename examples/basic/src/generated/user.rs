@@ -3,6 +3,9 @@
 #![allow(unused_imports, dead_code, clippy::all, unused_variables)]
 use serde::{Deserialize, Serialize};
 use ferriorm_runtime::prelude::*;
+use ferriorm_runtime::prelude::sqlx;
+use ferriorm_runtime::prelude::chrono;
+use ferriorm_runtime::prelude::uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 #[sqlx(rename_all = "snake_case")]
 pub struct User {

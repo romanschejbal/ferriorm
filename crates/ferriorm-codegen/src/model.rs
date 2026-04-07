@@ -37,6 +37,9 @@ pub fn generate_model_module(model: &Model) -> TokenStream {
 
         use serde::{Deserialize, Serialize};
         use ferriorm_runtime::prelude::*;
+        use ferriorm_runtime::prelude::sqlx;
+        use ferriorm_runtime::prelude::chrono;
+        use ferriorm_runtime::prelude::uuid;
 
         #data_struct
         #filter_module
@@ -898,7 +901,7 @@ fn gen_insert_code(model: &Model, scalar_fields: &[&Field], table_name: &str) ->
     for f in &optional {
         let db_name = &f.db_name;
         let field_ident = format_ident!("{}", to_snake_case(&f.name));
-        let default_expr = gen_default_expr(f);
+        let default_expr = gen_default_expr(f, &f.field_type);
 
         col_pushes.push(quote! { cols.push(#db_name); });
         val_pushes.push(quote! {
@@ -957,19 +960,33 @@ fn gen_insert_code(model: &Model, scalar_fields: &[&Field], table_name: &str) ->
 }
 
 /// Generate a Rust expression for a field's @default value.
-fn gen_default_expr(field: &Field) -> TokenStream {
+fn gen_default_expr(field: &Field, field_type: &FieldKind) -> TokenStream {
     use ferriorm_core::ast::DefaultValue;
 
     match &field.default {
         Some(DefaultValue::Uuid) => quote! { uuid::Uuid::new_v4().to_string() },
         Some(DefaultValue::Cuid) => quote! { uuid::Uuid::new_v4().to_string() }, // fallback
         Some(DefaultValue::Now) => quote! { chrono::Utc::now() },
-        Some(DefaultValue::AutoIncrement) => quote! { 0 }, // DB handles this
+        Some(DefaultValue::AutoIncrement) => quote! { 0i32 }, // DB handles this
         Some(DefaultValue::Literal(lit)) => {
             use ferriorm_core::ast::LiteralValue;
             match lit {
                 LiteralValue::String(s) => quote! { #s.to_string() },
-                LiteralValue::Int(i) => quote! { #i },
+                LiteralValue::Int(i) => {
+                    // Cast the integer literal to the correct Rust type based on the field's scalar type.
+                    match field_type {
+                        FieldKind::Scalar(ScalarType::Float) => {
+                            let val = *i as f64;
+                            quote! { #val }
+                        }
+                        FieldKind::Scalar(ScalarType::BigInt) => quote! { #i },
+                        _ => {
+                            // Default to i32 for Int and other types
+                            let val = *i as i32;
+                            quote! { #val }
+                        }
+                    }
+                }
                 LiteralValue::Float(f) => quote! { #f },
                 LiteralValue::Bool(b) => quote! { #b },
             }

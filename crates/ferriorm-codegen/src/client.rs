@@ -30,6 +30,7 @@ pub fn generate_client_module(schema: &Schema) -> TokenStream {
 
     quote! {
         use ferriorm_runtime::prelude::*;
+        use ferriorm_runtime::prelude::sqlx;
 
         pub struct FerriormClient {
             inner: DatabaseClient,

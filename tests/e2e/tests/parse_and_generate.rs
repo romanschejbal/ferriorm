@@ -333,3 +333,209 @@ model User {
         "mod.rs should not export enums module when there are no enums"
     );
 }
+
+// ─── Bug 4 regression: integer literal types for defaults ──────────
+
+#[test]
+fn generated_default_int_on_int_field_uses_i32() {
+    // @default(0) on an Int field should produce 0i32, not 0i64
+    let schema_str = r#"
+datasource db {
+  provider = "sqlite"
+  url      = "sqlite::memory:"
+}
+
+generator client {
+  output = "./src/generated"
+}
+
+model Item {
+  id    String @id @default(uuid())
+  count Int    @default(14)
+
+  @@map("items")
+}
+"#;
+    let schema =
+        ferriorm_parser::parse_and_validate(schema_str).expect("parse_and_validate should succeed");
+
+    let tmp_dir = tempfile::tempdir().expect("create temp dir");
+    let output_dir = tmp_dir.path().join("generated");
+
+    ferriorm_codegen::generator::generate(&schema, &output_dir)
+        .expect("code generation should succeed");
+
+    let item_content = std::fs::read_to_string(output_dir.join("item.rs")).unwrap();
+    // Should contain 14i32, not 14i64
+    assert!(
+        item_content.contains("14i32"),
+        "Int field default should use i32 literal. Content:\n{item_content}"
+    );
+    assert!(
+        !item_content.contains("14i64"),
+        "Int field default should NOT use i64 literal. Content:\n{item_content}"
+    );
+}
+
+#[test]
+fn generated_default_int_on_float_field_uses_f64() {
+    // @default(0) on a Float field should produce 0f64, not 0i64
+    let schema_str = r#"
+datasource db {
+  provider = "sqlite"
+  url      = "sqlite::memory:"
+}
+
+generator client {
+  output = "./src/generated"
+}
+
+model Item {
+  id    String @id @default(uuid())
+  score Float  @default(0)
+
+  @@map("items")
+}
+"#;
+    let schema =
+        ferriorm_parser::parse_and_validate(schema_str).expect("parse_and_validate should succeed");
+
+    let tmp_dir = tempfile::tempdir().expect("create temp dir");
+    let output_dir = tmp_dir.path().join("generated");
+
+    ferriorm_codegen::generator::generate(&schema, &output_dir)
+        .expect("code generation should succeed");
+
+    let item_content = std::fs::read_to_string(output_dir.join("item.rs")).unwrap();
+    // Should contain 0f64 or 0.0, not 0i64
+    assert!(
+        item_content.contains("0f64") || item_content.contains("0.0"),
+        "Float field default should use f64 literal. Content:\n{item_content}"
+    );
+    assert!(
+        !item_content.contains("0i64"),
+        "Float field default should NOT use i64 literal. Content:\n{item_content}"
+    );
+}
+
+// ─── Bug 7 regression: explicit sqlx import in generated code ──────
+
+#[test]
+fn generated_model_has_explicit_sqlx_import() {
+    let schema =
+        ferriorm_parser::parse_and_validate(SCHEMA).expect("parse_and_validate should succeed");
+
+    let tmp_dir = tempfile::tempdir().expect("create temp dir");
+    let output_dir = tmp_dir.path().join("generated");
+
+    ferriorm_codegen::generator::generate(&schema, &output_dir)
+        .expect("code generation should succeed");
+
+    // Model files should have explicit sqlx, chrono, uuid imports
+    let user_content = std::fs::read_to_string(output_dir.join("user.rs")).unwrap();
+    assert!(
+        user_content.contains("use ferriorm_runtime::prelude::sqlx;"),
+        "Model file should have explicit sqlx import"
+    );
+    assert!(
+        user_content.contains("use ferriorm_runtime::prelude::chrono;"),
+        "Model file should have explicit chrono import"
+    );
+    assert!(
+        user_content.contains("use ferriorm_runtime::prelude::uuid;"),
+        "Model file should have explicit uuid import"
+    );
+
+    // Enums file should have explicit sqlx import
+    let enums_content = std::fs::read_to_string(output_dir.join("enums.rs")).unwrap();
+    assert!(
+        enums_content.contains("use ferriorm_runtime::prelude::sqlx;"),
+        "Enums file should have explicit sqlx import"
+    );
+
+    // Client file should have explicit sqlx import
+    let client_content = std::fs::read_to_string(output_dir.join("client.rs")).unwrap();
+    assert!(
+        client_content.contains("use ferriorm_runtime::prelude::sqlx;"),
+        "Client file should have explicit sqlx import"
+    );
+}
+
+// ─── Bug 6 regression: PoolConfig accessible in generated code ─────
+
+#[test]
+fn generated_client_uses_pool_config_from_prelude() {
+    let schema =
+        ferriorm_parser::parse_and_validate(SCHEMA).expect("parse_and_validate should succeed");
+
+    let tmp_dir = tempfile::tempdir().expect("create temp dir");
+    let output_dir = tmp_dir.path().join("generated");
+
+    ferriorm_codegen::generator::generate(&schema, &output_dir)
+        .expect("code generation should succeed");
+
+    let client_content = std::fs::read_to_string(output_dir.join("client.rs")).unwrap();
+    // Should use PoolConfig (not ferriorm_runtime::client::PoolConfig)
+    assert!(
+        client_content.contains("config: &PoolConfig"),
+        "Generated client should reference PoolConfig (from prelude)"
+    );
+    assert!(
+        !client_content.contains("ferriorm_runtime::client::PoolConfig"),
+        "Generated client should NOT use full path for PoolConfig"
+    );
+}
+
+// ─── Bug 5 regression: optional FK field in relation loading ───────
+
+#[test]
+fn generated_code_with_optional_fk_is_valid_syntax() {
+    // When a FK field is optional, the generated code should use
+    // filter_map and handle Option properly.
+    let schema_str = r#"
+datasource db {
+  provider = "sqlite"
+  url      = "sqlite::memory:"
+}
+
+generator client {
+  output = "./src/generated"
+}
+
+model Invoice {
+  id                   String              @id @default(uuid())
+  numberingSequence    NumberingSequence?   @relation(fields: [numberingSequenceId], references: [id])
+  numberingSequenceId  String?
+
+  @@map("invoices")
+}
+
+model NumberingSequence {
+  id       String    @id @default(uuid())
+  name     String
+  invoices Invoice[]
+
+  @@map("numbering_sequences")
+}
+"#;
+    let schema =
+        ferriorm_parser::parse_and_validate(schema_str).expect("parse_and_validate should succeed");
+
+    let tmp_dir = tempfile::tempdir().expect("create temp dir");
+    let output_dir = tmp_dir.path().join("generated");
+
+    ferriorm_codegen::generator::generate(&schema, &output_dir)
+        .expect("code generation should succeed");
+
+    // Verify the generated file is valid Rust syntax
+    let invoice_content = std::fs::read_to_string(output_dir.join("invoice.rs")).unwrap();
+    syn::parse_file(&invoice_content).unwrap_or_else(|e| {
+        panic!("Generated invoice.rs with optional FK should be valid Rust syntax: {e}")
+    });
+
+    // The optional FK should use filter_map instead of map
+    assert!(
+        invoice_content.contains("filter_map"),
+        "Optional FK field should use filter_map for collecting IDs. Content:\n{invoice_content}"
+    );
+}
