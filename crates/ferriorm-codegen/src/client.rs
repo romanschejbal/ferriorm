@@ -42,9 +42,27 @@ pub fn generate_client_module(schema: &Schema) -> TokenStream {
                 Ok(Self { inner })
             }
 
+            /// Connect to the database using the provided URL and pool configuration.
+            pub async fn connect_with_config(url: &str, config: &PoolConfig) -> Result<Self, FerriormError> {
+                let inner = DatabaseClient::connect_with_config(url, config).await?;
+                Ok(Self { inner })
+            }
+
             /// Get a reference to the underlying database client.
             pub fn client(&self) -> &DatabaseClient {
                 &self.inner
+            }
+
+            /// Get a reference to the underlying PostgreSQL pool for raw queries.
+            #[cfg(feature = "postgres")]
+            pub fn pg_pool(&self) -> Result<&sqlx::PgPool, FerriormError> {
+                self.inner.pg_pool()
+            }
+
+            /// Get a reference to the underlying SQLite pool for raw queries.
+            #[cfg(feature = "sqlite")]
+            pub fn sqlite_pool(&self) -> Result<&sqlx::SqlitePool, FerriormError> {
+                self.inner.sqlite_pool()
             }
 
             #(#model_accessors)*

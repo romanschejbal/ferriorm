@@ -27,6 +27,7 @@ pub mod transaction;
 pub mod prelude {
     pub use crate::SetValue;
     pub use crate::client::DatabaseClient;
+    pub use crate::client::PoolConfig;
     pub use crate::error::FerriormError;
     pub use crate::filter::*;
     pub use crate::order::SortOrder;

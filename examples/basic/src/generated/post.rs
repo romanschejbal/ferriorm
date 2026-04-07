@@ -418,6 +418,13 @@ impl<'a> PostActions<'a> {
             r#where,
         }
     }
+    pub fn aggregate(&self, r#where: filter::PostWhereInput) -> AggregateQuery<'a> {
+        AggregateQuery {
+            client: self.client,
+            r#where,
+            ops: vec![],
+        }
+    }
 }
 fn build_order_by<'args, DB: sqlx::Database>(
     orders: &[order::PostOrderByInput],
@@ -537,6 +544,13 @@ pub struct FindUniqueQuery<'a> {
     r#where: filter::PostWhereUniqueInput,
 }
 impl<'a> FindUniqueQuery<'a> {
+    pub fn select(self, select: PostSelect) -> FindUniqueSelectQuery<'a> {
+        FindUniqueSelectQuery {
+            client: self.client,
+            r#where: self.r#where,
+            select,
+        }
+    }
     pub async fn exec(self) -> Result<Option<Post>, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
@@ -563,6 +577,14 @@ impl<'a> FindFirstQuery<'a> {
     pub fn order_by(mut self, order: order::PostOrderByInput) -> Self {
         self.order_by.push(order);
         self
+    }
+    pub fn select(self, select: PostSelect) -> FindFirstSelectQuery<'a> {
+        FindFirstSelectQuery {
+            client: self.client,
+            r#where: self.r#where,
+            order_by: self.order_by,
+            select,
+        }
     }
     pub async fn exec(self) -> Result<Option<Post>, FerriormError> {
         match self.client {
@@ -612,6 +634,16 @@ impl<'a> FindManyQuery<'a> {
     pub fn take(mut self, n: i64) -> Self {
         self.take = Some(n);
         self
+    }
+    pub fn select(self, select: PostSelect) -> FindManySelectQuery<'a> {
+        FindManySelectQuery {
+            client: self.client,
+            r#where: self.r#where,
+            order_by: self.order_by,
+            skip: self.skip,
+            take: self.take,
+            select,
+        }
     }
     pub async fn exec(self) -> Result<Vec<Post>, FerriormError> {
         match self.client {
@@ -809,16 +841,42 @@ pub struct UpdateManyQuery<'a> {
 }
 impl<'a> UpdateManyQuery<'a> {
     pub async fn exec(self) -> Result<u64, FerriormError> {
-        let items = FindManyQuery {
-            client: self.client,
-            r#where: self.r#where,
-            order_by: vec![],
-            skip: None,
-            take: None,
+        let client = self.client;
+        macro_rules! build_update_many {
+            ($qb_type:ty) => {
+                { let mut qb = sqlx::QueryBuilder:: < $qb_type >
+                ::new("UPDATE \"posts\" SET "); let mut first_set = true; if let
+                Some(SetValue::Set(v)) = self.data.title { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "title",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .content { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "content", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.published { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "published",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .status { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "status", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.author_id { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "author_id",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .created_at { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "created_at", "\" = ")); qb.push_bind(v); } if !
+                first_set { qb.push(", "); } first_set = false; qb.push(concat!("\"",
+                "updated_at", "\" = ")); qb.push_bind(chrono::Utc::now()); if first_set {
+                return Ok(0); } qb.push(" WHERE 1=1"); self.r#where.build_where(& mut
+                qb); qb }
+            };
         }
-            .exec()
-            .await?;
-        Ok(items.len() as u64)
+        match client {
+            DatabaseClient::Postgres(_) => {
+                let qb = build_update_many!(sqlx::Postgres);
+                client.execute_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let qb = build_update_many!(sqlx::Sqlite);
+                client.execute_sqlite(qb).await
+            }
+        }
     }
 }
 pub struct DeleteManyQuery<'a> {
@@ -843,6 +901,253 @@ impl<'a> DeleteManyQuery<'a> {
         }
     }
 }
+#[derive(Debug, Clone, Copy)]
+pub enum PostAggregateField {
+    CreatedAt,
+    UpdatedAt,
+}
+impl PostAggregateField {
+    pub fn db_name(&self) -> &'static str {
+        match self {
+            Self::CreatedAt => "created_at",
+            Self::UpdatedAt => "updated_at",
+        }
+    }
+    fn alias(&self, prefix: &'static str) -> &'static str {
+        match (prefix, self) {
+            ("min", Self::CreatedAt) => "min_created_at",
+            ("max", Self::CreatedAt) => "max_created_at",
+            ("min", Self::UpdatedAt) => "min_updated_at",
+            ("max", Self::UpdatedAt) => "max_updated_at",
+            _ => unreachable!(),
+        }
+    }
+    fn is_numeric(&self) -> bool {
+        false
+    }
+}
+#[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize)]
+pub struct PostAggregateResult {
+    #[sqlx(default)]
+    pub min_created_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[sqlx(default)]
+    pub max_created_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[sqlx(default)]
+    pub min_updated_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[sqlx(default)]
+    pub max_updated_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+pub struct AggregateQuery<'a> {
+    client: &'a DatabaseClient,
+    r#where: filter::PostWhereInput,
+    ops: Vec<(&'static str, &'static str, &'static str)>,
+}
+impl<'a> AggregateQuery<'a> {
+    pub fn avg(mut self, field: PostAggregateField) -> Self {
+        assert!(field.is_numeric(), "avg() is only supported on numeric fields");
+        let db_name = field.db_name();
+        let alias = field.alias("avg");
+        self.ops.push(("AVG", db_name, alias));
+        self
+    }
+    pub fn sum(mut self, field: PostAggregateField) -> Self {
+        assert!(field.is_numeric(), "sum() is only supported on numeric fields");
+        let db_name = field.db_name();
+        let alias = field.alias("sum");
+        self.ops.push(("SUM", db_name, alias));
+        self
+    }
+    pub fn min(mut self, field: PostAggregateField) -> Self {
+        let db_name = field.db_name();
+        let alias = field.alias("min");
+        self.ops.push(("MIN", db_name, alias));
+        self
+    }
+    pub fn max(mut self, field: PostAggregateField) -> Self {
+        let db_name = field.db_name();
+        let alias = field.alias("max");
+        self.ops.push(("MAX", db_name, alias));
+        self
+    }
+    pub async fn exec(self) -> Result<PostAggregateResult, FerriormError> {
+        if self.ops.is_empty() {
+            return Err(FerriormError::Query("No aggregate operations specified".into()));
+        }
+        let selections: Vec<String> = self
+            .ops
+            .iter()
+            .map(|(func, col, alias)| format!(r#"{}("{}") as "{}""#, func, col, alias))
+            .collect();
+        let select_clause = selections.join(", ");
+        let base_sql = format!("SELECT {} FROM \"posts\" WHERE 1=1", select_clause);
+        match self.client {
+            DatabaseClient::Postgres(_) => {
+                let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(&base_sql);
+                self.r#where.build_where(&mut qb);
+                self.client.fetch_one_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let mut qb = sqlx::QueryBuilder::<sqlx::Sqlite>::new(&base_sql);
+                self.r#where.build_where(&mut qb);
+                self.client.fetch_one_sqlite(qb).await
+            }
+        }
+    }
+}
+#[derive(Debug, Clone, Default)]
+pub struct PostSelect {
+    pub id: bool,
+    pub title: bool,
+    pub content: bool,
+    pub published: bool,
+    pub status: bool,
+    pub author_id: bool,
+    pub created_at: bool,
+    pub updated_at: bool,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[sqlx(rename_all = "snake_case")]
+pub struct PostPartial {
+    #[sqlx(default)]
+    pub id: Option<String>,
+    #[sqlx(default)]
+    pub title: Option<String>,
+    #[sqlx(default)]
+    pub content: Option<String>,
+    #[sqlx(default)]
+    pub published: Option<bool>,
+    #[sqlx(default)]
+    pub status: Option<super::enums::PostStatus>,
+    #[sqlx(default)]
+    pub author_id: Option<String>,
+    #[sqlx(default)]
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[sqlx(default)]
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+fn build_select_columns(select: &PostSelect) -> String {
+    let mut cols = Vec::new();
+    if select.id {
+        cols.push("\"id\"");
+    }
+    if select.title {
+        cols.push("\"title\"");
+    }
+    if select.content {
+        cols.push("\"content\"");
+    }
+    if select.published {
+        cols.push("\"published\"");
+    }
+    if select.status {
+        cols.push("\"status\"");
+    }
+    if select.author_id {
+        cols.push("\"author_id\"");
+    }
+    if select.created_at {
+        cols.push("\"created_at\"");
+    }
+    if select.updated_at {
+        cols.push("\"updated_at\"");
+    }
+    if cols.is_empty() { "*".to_string() } else { cols.join(", ") }
+}
+pub struct FindManySelectQuery<'a> {
+    client: &'a DatabaseClient,
+    r#where: filter::PostWhereInput,
+    order_by: Vec<order::PostOrderByInput>,
+    skip: Option<i64>,
+    take: Option<i64>,
+    select: PostSelect,
+}
+impl<'a> FindManySelectQuery<'a> {
+    pub fn order_by(mut self, order: order::PostOrderByInput) -> Self {
+        self.order_by.push(order);
+        self
+    }
+    pub fn skip(mut self, n: i64) -> Self {
+        self.skip = Some(n);
+        self
+    }
+    pub fn take(mut self, n: i64) -> Self {
+        self.take = Some(n);
+        self
+    }
+    pub async fn exec(self) -> Result<Vec<PostPartial>, FerriormError> {
+        let cols = build_select_columns(&self.select);
+        let base_sql = format!("SELECT {} FROM \"posts\" WHERE 1=1", cols);
+        match self.client {
+            DatabaseClient::Postgres(_) => {
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(&base_sql, &self.r#where, &self.order_by, self.take, self.skip);
+                self.client.fetch_all_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(&base_sql, &self.r#where, &self.order_by, self.take, self.skip);
+                self.client.fetch_all_sqlite(qb).await
+            }
+        }
+    }
+}
+pub struct FindUniqueSelectQuery<'a> {
+    client: &'a DatabaseClient,
+    r#where: filter::PostWhereUniqueInput,
+    select: PostSelect,
+}
+impl<'a> FindUniqueSelectQuery<'a> {
+    pub async fn exec(self) -> Result<Option<PostPartial>, FerriormError> {
+        let cols = build_select_columns(&self.select);
+        let base_sql = format!("SELECT {} FROM \"posts\" WHERE 1=1", cols);
+        match self.client {
+            DatabaseClient::Postgres(_) => {
+                let qb = build_unique_select_query::<
+                    sqlx::Postgres,
+                >(&base_sql, &self.r#where);
+                self.client.fetch_optional_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let qb = build_unique_select_query::<
+                    sqlx::Sqlite,
+                >(&base_sql, &self.r#where);
+                self.client.fetch_optional_sqlite(qb).await
+            }
+        }
+    }
+}
+pub struct FindFirstSelectQuery<'a> {
+    client: &'a DatabaseClient,
+    r#where: filter::PostWhereInput,
+    order_by: Vec<order::PostOrderByInput>,
+    select: PostSelect,
+}
+impl<'a> FindFirstSelectQuery<'a> {
+    pub fn order_by(mut self, order: order::PostOrderByInput) -> Self {
+        self.order_by.push(order);
+        self
+    }
+    pub async fn exec(self) -> Result<Option<PostPartial>, FerriormError> {
+        let cols = build_select_columns(&self.select);
+        let base_sql = format!("SELECT {} FROM \"posts\" WHERE 1=1", cols);
+        match self.client {
+            DatabaseClient::Postgres(_) => {
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(&base_sql, &self.r#where, &self.order_by, Some(1), None);
+                self.client.fetch_optional_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(&base_sql, &self.r#where, &self.order_by, Some(1), None);
+                self.client.fetch_optional_sqlite(qb).await
+            }
+        }
+    }
+}
 #[derive(Debug, Clone, Default)]
 pub struct PostInclude {
     pub author: bool,
@@ -862,26 +1167,21 @@ impl Post {
     ) -> Result<Vec<PostWithRelations>, FerriormError> {
         let mut author_map: std::collections::HashMap<String, super::user::User> = std::collections::HashMap::new();
         if include.author {
-            let fk_ids: Vec<String> = records
-                .iter()
-                .map(|r| r.author_id.clone())
-                .collect();
-            if !fk_ids.is_empty() {
-                let sql = format!(
-                    "SELECT * FROM \"{}\" WHERE \"{}\" IN ({})", "users", "id", fk_ids
-                    .iter().enumerate().map(| (i, _) | format!("${}", i + 1)).collect:: <
-                    Vec < _ >> ().join(", ")
-                );
-                let mut query = sqlx::query_as::<
-                    sqlx::Postgres,
-                    super::user::User,
-                >(&sql);
-                for id in &fk_ids {
-                    query = query.bind(id);
+            let ids: Vec<String> = records.iter().map(|r| r.author_id.clone()).collect();
+            if !ids.is_empty() {
+                macro_rules! build_in_query {
+                    ($db:ty) => {
+                        { let mut qb = sqlx::QueryBuilder:: < $db >
+                        ::new("SELECT * FROM \"users\" WHERE \"id\" IN ("); let mut sep =
+                        qb.separated(", "); for id in & ids { sep.push_bind(id.clone());
+                        } qb.push(")"); qb }
+                    };
                 }
                 match client {
                     DatabaseClient::Postgres(pool) => {
-                        let related_rows = query
+                        let mut qb = build_in_query!(sqlx::Postgres);
+                        let related_rows: Vec<super::user::User> = qb
+                            .build_query_as()
                             .fetch_all(pool)
                             .await
                             .map_err(FerriormError::from)?;
@@ -889,7 +1189,17 @@ impl Post {
                             author_map.insert(row.id.clone(), row);
                         }
                     }
-                    _ => {}
+                    DatabaseClient::Sqlite(pool) => {
+                        let mut qb = build_in_query!(sqlx::Sqlite);
+                        let related_rows: Vec<super::user::User> = qb
+                            .build_query_as()
+                            .fetch_all(pool)
+                            .await
+                            .map_err(FerriormError::from)?;
+                        for row in related_rows {
+                            author_map.insert(row.id.clone(), row);
+                        }
+                    }
                 }
             }
         }

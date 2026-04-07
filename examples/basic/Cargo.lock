@@ -274,6 +274,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "ferriorm-core"
+version = "0.1.0"
+
+[[package]]
+name = "ferriorm-example-basic"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "ferriorm-runtime",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "ferriorm-runtime"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "ferriorm-core",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -785,38 +817,6 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
-
-[[package]]
-name = "ormx-core"
-version = "0.1.0"
-
-[[package]]
-name = "ormx-example-basic"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "ormx-runtime",
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "ormx-runtime"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "ormx-core",
- "serde",
- "serde_json",
- "sqlx",
- "thiserror",
- "tokio",
- "tracing",
- "uuid",
-]
 
 [[package]]
 name = "parking"

@@ -27,8 +27,10 @@ pub fn generate_model_module(model: &Model) -> TokenStream {
     let filter_module = gen_filter_module(model, &scalar_fields);
     let data_module = gen_data_module(model, &scalar_fields);
     let order_module = gen_order_module(model, &scalar_fields);
-    let actions_struct = gen_actions(model);
+    let actions_struct = gen_actions(model, &scalar_fields);
     let query_builders = gen_query_builders(model, &scalar_fields);
+    let aggregate_types = gen_aggregate_types(model, &scalar_fields);
+    let select_types = gen_select_types(model, &scalar_fields);
 
     quote! {
         #![allow(unused_imports, dead_code, clippy::all, unused_variables)]
@@ -42,6 +44,8 @@ pub fn generate_model_module(model: &Model) -> TokenStream {
         #order_module
         #actions_struct
         #query_builders
+        #aggregate_types
+        #select_types
     }
 }
 
@@ -427,7 +431,7 @@ fn gen_order_module(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
 
 // ─── Actions ──────────────────────────────────────────────────
 
-fn gen_actions(model: &Model) -> TokenStream {
+fn gen_actions(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
     let _model_ident = format_ident!("{}", model.name);
     let actions_name = format_ident!("{}Actions", model.name);
     let where_input = format_ident!("{}WhereInput", model.name);
@@ -435,6 +439,25 @@ fn gen_actions(model: &Model) -> TokenStream {
     let create_input = format_ident!("{}CreateInput", model.name);
     let update_input = format_ident!("{}UpdateInput", model.name);
     let _order_by = format_ident!("{}OrderByInput", model.name);
+
+    // Only generate aggregate() if there are aggregatable fields
+    let has_agg_fields = scalar_fields.iter().any(|f| {
+        matches!(
+            &f.field_type,
+            FieldKind::Scalar(
+                ScalarType::Int | ScalarType::BigInt | ScalarType::Float | ScalarType::DateTime
+            )
+        )
+    });
+    let aggregate_method = if has_agg_fields {
+        quote! {
+            pub fn aggregate(&self, r#where: filter::#where_input) -> AggregateQuery<'a> {
+                AggregateQuery { client: self.client, r#where, ops: vec![] }
+            }
+        }
+    } else {
+        quote! {}
+    };
 
     quote! {
         pub struct #actions_name<'a> {
@@ -483,6 +506,8 @@ fn gen_actions(model: &Model) -> TokenStream {
             pub fn delete_many(&self, r#where: filter::#where_input) -> DeleteManyQuery<'a> {
                 DeleteManyQuery { client: self.client, r#where }
             }
+
+            #aggregate_method
         }
     }
 }
@@ -497,6 +522,10 @@ fn gen_query_builders(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
     let _create_input = format_ident!("{}CreateInput", model.name);
     let _update_input = format_ident!("{}UpdateInput", model.name);
     let order_by = format_ident!("{}OrderByInput", model.name);
+    let _select_struct = format_ident!("{}Select", model.name);
+    let _partial_struct = format_ident!("{}Partial", model.name);
+    let _aggregate_result = format_ident!("{}AggregateResult", model.name);
+    let _aggregate_field = format_ident!("{}AggregateField", model.name);
     let db_bounds = collect_db_bounds(scalar_fields);
 
     let select_sql = format!(r#"SELECT * FROM "{}" WHERE 1=1"#, table_name);
@@ -610,6 +639,10 @@ fn gen_query_builders(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
         }
 
         impl<'a> FindUniqueQuery<'a> {
+            pub fn select(self, select: #_select_struct) -> FindUniqueSelectQuery<'a> {
+                FindUniqueSelectQuery { client: self.client, r#where: self.r#where, select }
+            }
+
             pub async fn exec(self) -> Result<Option<#model_ident>, FerriormError> {
                 match self.client {
                     DatabaseClient::Postgres(_) => {
@@ -634,6 +667,10 @@ fn gen_query_builders(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
             pub fn order_by(mut self, order: order::#order_by) -> Self {
                 self.order_by.push(order);
                 self
+            }
+
+            pub fn select(self, select: #_select_struct) -> FindFirstSelectQuery<'a> {
+                FindFirstSelectQuery { client: self.client, r#where: self.r#where, order_by: self.order_by, select }
             }
 
             pub async fn exec(self) -> Result<Option<#model_ident>, FerriormError> {
@@ -672,6 +709,17 @@ fn gen_query_builders(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
             pub fn take(mut self, n: i64) -> Self {
                 self.take = Some(n);
                 self
+            }
+
+            pub fn select(self, select: #_select_struct) -> FindManySelectQuery<'a> {
+                FindManySelectQuery {
+                    client: self.client,
+                    r#where: self.r#where,
+                    order_by: self.order_by,
+                    skip: self.skip,
+                    take: self.take,
+                    select,
+                }
             }
 
             pub async fn exec(self) -> Result<Vec<#model_ident>, FerriormError> {
@@ -1098,6 +1146,423 @@ fn gen_update_many_code(_model: &Model, scalar_fields: &[&Field], table_name: &s
             DatabaseClient::Sqlite(_) => {
                 let qb = build_update_many!(sqlx::Sqlite);
                 client.execute_sqlite(qb).await
+            }
+        }
+    }
+}
+
+// ─── Aggregate Types ──────────────────────────────────────────
+
+/// Identifies which fields are aggregatable and what operations they support.
+enum AggregateKind {
+    /// Numeric fields: avg, sum, min, max
+    Numeric,
+    /// DateTime fields: min, max only
+    DateTime,
+}
+
+fn gen_aggregate_types(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
+    let aggregate_field_name = format_ident!("{}AggregateField", model.name);
+    let aggregate_result_name = format_ident!("{}AggregateResult", model.name);
+    let _where_input = format_ident!("{}WhereInput", model.name);
+    let table_name = &model.db_name;
+
+    // Collect aggregatable fields with their kind
+    let agg_fields: Vec<(&Field, AggregateKind)> = scalar_fields
+        .iter()
+        .filter_map(|f| match &f.field_type {
+            FieldKind::Scalar(ScalarType::Int | ScalarType::BigInt | ScalarType::Float) => {
+                Some((*f, AggregateKind::Numeric))
+            }
+            FieldKind::Scalar(ScalarType::DateTime) => Some((*f, AggregateKind::DateTime)),
+            _ => None,
+        })
+        .collect();
+
+    if agg_fields.is_empty() {
+        return quote! {};
+    }
+
+    // Generate enum variants
+    let enum_variants: Vec<TokenStream> = agg_fields
+        .iter()
+        .map(|(f, _)| {
+            let variant = format_ident!("{}", to_pascal_case(&f.name));
+            quote! { #variant }
+        })
+        .collect();
+
+    // Generate db_name match arms
+    let db_name_arms: Vec<TokenStream> = agg_fields
+        .iter()
+        .map(|(f, _)| {
+            let variant = format_ident!("{}", to_pascal_case(&f.name));
+            let db_name = &f.db_name;
+            quote! { Self::#variant => #db_name }
+        })
+        .collect();
+
+    // Generate AggregateResult fields
+    let mut result_fields = Vec::new();
+    for (f, kind) in &agg_fields {
+        let snake = to_snake_case(&f.name);
+        let orig_ty = rust_type_tokens(
+            &Field {
+                is_optional: false,
+                ..(*f).clone()
+            },
+            ModuleDepth::TopLevel,
+        );
+
+        match kind {
+            AggregateKind::Numeric => {
+                let avg_name = format_ident!("avg_{}", snake);
+                let sum_name = format_ident!("sum_{}", snake);
+                let min_name = format_ident!("min_{}", snake);
+                let max_name = format_ident!("max_{}", snake);
+                result_fields.push(quote! { #[sqlx(default)] pub #avg_name: Option<f64> });
+                result_fields.push(quote! { #[sqlx(default)] pub #sum_name: Option<f64> });
+                result_fields.push(quote! { #[sqlx(default)] pub #min_name: Option<#orig_ty> });
+                result_fields.push(quote! { #[sqlx(default)] pub #max_name: Option<#orig_ty> });
+            }
+            AggregateKind::DateTime => {
+                let min_name = format_ident!("min_{}", snake);
+                let max_name = format_ident!("max_{}", snake);
+                result_fields.push(quote! { #[sqlx(default)] pub #min_name: Option<#orig_ty> });
+                result_fields.push(quote! { #[sqlx(default)] pub #max_name: Option<#orig_ty> });
+            }
+        }
+    }
+
+    // Generate the is_numeric check for avg/sum validation
+    let numeric_arms: Vec<TokenStream> = agg_fields
+        .iter()
+        .filter(|(_, kind)| matches!(kind, AggregateKind::Numeric))
+        .map(|(f, _)| {
+            let variant = format_ident!("{}", to_pascal_case(&f.name));
+            quote! { Self::#variant => true }
+        })
+        .collect();
+
+    let has_numeric = !numeric_arms.is_empty();
+    let is_numeric_method = if has_numeric {
+        quote! {
+            fn is_numeric(&self) -> bool {
+                match self {
+                    #(#numeric_arms,)*
+                    #[allow(unreachable_patterns)]
+                    _ => false,
+                }
+            }
+        }
+    } else {
+        quote! {
+            fn is_numeric(&self) -> bool { false }
+        }
+    };
+
+    // Generate alias match arms for each (prefix, field) combination
+    let mut alias_arms = Vec::new();
+    for (f, kind) in &agg_fields {
+        let variant = format_ident!("{}", to_pascal_case(&f.name));
+        let snake = to_snake_case(&f.name);
+        let prefixes = match kind {
+            AggregateKind::Numeric => vec!["avg", "sum", "min", "max"],
+            AggregateKind::DateTime => vec!["min", "max"],
+        };
+        for prefix in prefixes {
+            let alias_str = format!("{}_{}", prefix, snake);
+            alias_arms.push(quote! { (#prefix, Self::#variant) => #alias_str });
+        }
+    }
+
+    let agg_select_base = format!(r#"SELECT {{}} FROM "{}" WHERE 1=1"#, table_name);
+
+    quote! {
+        #[derive(Debug, Clone, Copy)]
+        pub enum #aggregate_field_name {
+            #(#enum_variants),*
+        }
+
+        impl #aggregate_field_name {
+            pub fn db_name(&self) -> &'static str {
+                match self {
+                    #(#db_name_arms,)*
+                }
+            }
+
+            fn alias(&self, prefix: &'static str) -> &'static str {
+                match (prefix, self) {
+                    #(#alias_arms,)*
+                    _ => unreachable!(),
+                }
+            }
+
+            #is_numeric_method
+        }
+
+        #[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize)]
+        pub struct #aggregate_result_name {
+            #(#result_fields,)*
+        }
+
+        pub struct AggregateQuery<'a> {
+            client: &'a DatabaseClient,
+            r#where: filter::#_where_input,
+            ops: Vec<(&'static str, &'static str, &'static str)>,
+        }
+
+        impl<'a> AggregateQuery<'a> {
+            pub fn avg(mut self, field: #aggregate_field_name) -> Self {
+                assert!(field.is_numeric(), "avg() is only supported on numeric fields");
+                let db_name = field.db_name();
+                let alias = field.alias("avg");
+                self.ops.push(("AVG", db_name, alias));
+                self
+            }
+
+            pub fn sum(mut self, field: #aggregate_field_name) -> Self {
+                assert!(field.is_numeric(), "sum() is only supported on numeric fields");
+                let db_name = field.db_name();
+                let alias = field.alias("sum");
+                self.ops.push(("SUM", db_name, alias));
+                self
+            }
+
+            pub fn min(mut self, field: #aggregate_field_name) -> Self {
+                let db_name = field.db_name();
+                let alias = field.alias("min");
+                self.ops.push(("MIN", db_name, alias));
+                self
+            }
+
+            pub fn max(mut self, field: #aggregate_field_name) -> Self {
+                let db_name = field.db_name();
+                let alias = field.alias("max");
+                self.ops.push(("MAX", db_name, alias));
+                self
+            }
+
+            pub async fn exec(self) -> Result<#aggregate_result_name, FerriormError> {
+                if self.ops.is_empty() {
+                    return Err(FerriormError::Query("No aggregate operations specified".into()));
+                }
+
+                let selections: Vec<String> = self.ops.iter()
+                    .map(|(func, col, alias)| format!(r#"{}("{}") as "{}""#, func, col, alias))
+                    .collect();
+                let select_clause = selections.join(", ");
+                let base_sql = format!(#agg_select_base, select_clause);
+
+                match self.client {
+                    DatabaseClient::Postgres(_) => {
+                        let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(&base_sql);
+                        self.r#where.build_where(&mut qb);
+                        self.client.fetch_one_pg(qb).await
+                    }
+                    DatabaseClient::Sqlite(_) => {
+                        let mut qb = sqlx::QueryBuilder::<sqlx::Sqlite>::new(&base_sql);
+                        self.r#where.build_where(&mut qb);
+                        self.client.fetch_one_sqlite(qb).await
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Select Types ─────────────────────────────────────────────
+
+fn gen_select_types(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
+    let select_name = format_ident!("{}Select", model.name);
+    let partial_name = format_ident!("{}Partial", model.name);
+    let _where_input = format_ident!("{}WhereInput", model.name);
+    let _where_unique = format_ident!("{}WhereUniqueInput", model.name);
+    let order_by_name = format_ident!("{}OrderByInput", model.name);
+    let table_name = &model.db_name;
+
+    // Select struct fields: all bool, default false
+    let select_fields: Vec<TokenStream> = scalar_fields
+        .iter()
+        .map(|f| {
+            let name = format_ident!("{}", to_snake_case(&f.name));
+            quote! { pub #name: bool }
+        })
+        .collect();
+
+    // Partial struct fields: all Option<T> with #[sqlx(default)]
+    // For already-optional fields, don't double-wrap in Option
+    let partial_fields: Vec<TokenStream> = scalar_fields
+        .iter()
+        .map(|f| {
+            let name = format_ident!("{}", to_snake_case(&f.name));
+            let db_name = &f.db_name;
+            // Get the base type (non-optional version)
+            let base_ty = rust_type_tokens(
+                &Field {
+                    is_optional: false,
+                    ..(*f).clone()
+                },
+                ModuleDepth::TopLevel,
+            );
+            let rename = if db_name != &to_snake_case(&f.name) {
+                quote! { #[sqlx(rename = #db_name)] }
+            } else {
+                quote! {}
+            };
+            // Always wrap in Option<T>, regardless of whether field was originally optional
+            quote! { #[sqlx(default)] #rename pub #name: Option<#base_ty> }
+        })
+        .collect();
+
+    // build_select_columns: maps Select bools to column names
+    let select_col_arms: Vec<TokenStream> = scalar_fields
+        .iter()
+        .map(|f| {
+            let name = format_ident!("{}", to_snake_case(&f.name));
+            let db_name = &f.db_name;
+            let col_expr = format!(r#""{}""#, db_name);
+            quote! {
+                if select.#name { cols.push(#col_expr); }
+            }
+        })
+        .collect();
+
+    let select_sql_prefix = format!(r#"SELECT {{}} FROM "{}" WHERE 1=1"#, table_name);
+
+    quote! {
+        #[derive(Debug, Clone, Default)]
+        pub struct #select_name {
+            #(#select_fields,)*
+        }
+
+        #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+        #[sqlx(rename_all = "snake_case")]
+        pub struct #partial_name {
+            #(#partial_fields,)*
+        }
+
+        fn build_select_columns(select: &#select_name) -> String {
+            let mut cols = Vec::new();
+            #(#select_col_arms)*
+            if cols.is_empty() {
+                "*".to_string()
+            } else {
+                cols.join(", ")
+            }
+        }
+
+        // ── FindManySelectQuery ──────────────────────────────────
+
+        pub struct FindManySelectQuery<'a> {
+            client: &'a DatabaseClient,
+            r#where: filter::#_where_input,
+            order_by: Vec<order::#order_by_name>,
+            skip: Option<i64>,
+            take: Option<i64>,
+            select: #select_name,
+        }
+
+        impl<'a> FindManySelectQuery<'a> {
+            pub fn order_by(mut self, order: order::#order_by_name) -> Self {
+                self.order_by.push(order);
+                self
+            }
+
+            pub fn skip(mut self, n: i64) -> Self {
+                self.skip = Some(n);
+                self
+            }
+
+            pub fn take(mut self, n: i64) -> Self {
+                self.take = Some(n);
+                self
+            }
+
+            pub async fn exec(self) -> Result<Vec<#partial_name>, FerriormError> {
+                let cols = build_select_columns(&self.select);
+                let base_sql = format!(#select_sql_prefix, cols);
+
+                match self.client {
+                    DatabaseClient::Postgres(_) => {
+                        let qb = build_select_query::<sqlx::Postgres>(
+                            &base_sql, &self.r#where, &self.order_by, self.take, self.skip,
+                        );
+                        self.client.fetch_all_pg(qb).await
+                    }
+                    DatabaseClient::Sqlite(_) => {
+                        let qb = build_select_query::<sqlx::Sqlite>(
+                            &base_sql, &self.r#where, &self.order_by, self.take, self.skip,
+                        );
+                        self.client.fetch_all_sqlite(qb).await
+                    }
+                }
+            }
+        }
+
+        // ── FindUniqueSelectQuery ────────────────────────────────
+
+        pub struct FindUniqueSelectQuery<'a> {
+            client: &'a DatabaseClient,
+            r#where: filter::#_where_unique,
+            select: #select_name,
+        }
+
+        impl<'a> FindUniqueSelectQuery<'a> {
+            pub async fn exec(self) -> Result<Option<#partial_name>, FerriormError> {
+                let cols = build_select_columns(&self.select);
+                let base_sql = format!(#select_sql_prefix, cols);
+
+                match self.client {
+                    DatabaseClient::Postgres(_) => {
+                        let qb = build_unique_select_query::<sqlx::Postgres>(
+                            &base_sql, &self.r#where,
+                        );
+                        self.client.fetch_optional_pg(qb).await
+                    }
+                    DatabaseClient::Sqlite(_) => {
+                        let qb = build_unique_select_query::<sqlx::Sqlite>(
+                            &base_sql, &self.r#where,
+                        );
+                        self.client.fetch_optional_sqlite(qb).await
+                    }
+                }
+            }
+        }
+
+        // ── FindFirstSelectQuery ─────────────────────────────────
+
+        pub struct FindFirstSelectQuery<'a> {
+            client: &'a DatabaseClient,
+            r#where: filter::#_where_input,
+            order_by: Vec<order::#order_by_name>,
+            select: #select_name,
+        }
+
+        impl<'a> FindFirstSelectQuery<'a> {
+            pub fn order_by(mut self, order: order::#order_by_name) -> Self {
+                self.order_by.push(order);
+                self
+            }
+
+            pub async fn exec(self) -> Result<Option<#partial_name>, FerriormError> {
+                let cols = build_select_columns(&self.select);
+                let base_sql = format!(#select_sql_prefix, cols);
+
+                match self.client {
+                    DatabaseClient::Postgres(_) => {
+                        let qb = build_select_query::<sqlx::Postgres>(
+                            &base_sql, &self.r#where, &self.order_by, Some(1), None,
+                        );
+                        self.client.fetch_optional_pg(qb).await
+                    }
+                    DatabaseClient::Sqlite(_) => {
+                        let qb = build_select_query::<sqlx::Sqlite>(
+                            &base_sql, &self.r#where, &self.order_by, Some(1), None,
+                        );
+                        self.client.fetch_optional_sqlite(qb).await
+                    }
+                }
             }
         }
     }
