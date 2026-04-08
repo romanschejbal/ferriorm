@@ -1089,3 +1089,128 @@ async fn test_upsert_on_conflict() {
         .expect("count");
     assert_eq!(count.0, 1);
 }
+
+#[tokio::test]
+async fn test_upsert_insert_new_row_with_returning() {
+    let pool = setup_db().await;
+
+    // Upsert a row that doesn't exist — should INSERT
+    let user: User = sqlx::query_as(
+        r#"INSERT INTO "users" ("id", "email", "name", "age", "active", "created_at")
+           VALUES (?, ?, ?, ?, ?, datetime('now'))
+           ON CONFLICT ("id") DO UPDATE SET
+             "name" = excluded."name",
+             "age" = excluded."age"
+           RETURNING *"#,
+    )
+    .bind("u1")
+    .bind("alice@test.com")
+    .bind("Alice")
+    .bind(25i64)
+    .bind(1i64)
+    .fetch_one(&pool)
+    .await
+    .expect("upsert insert");
+
+    assert_eq!(user.id, "u1");
+    assert_eq!(user.email, "alice@test.com");
+    assert_eq!(user.name, Some("Alice".to_string()));
+    assert_eq!(user.age, 25);
+}
+
+#[tokio::test]
+async fn test_upsert_update_existing_row_with_returning() {
+    let pool = setup_db().await;
+
+    insert_user(&pool, "u1", "alice@test.com", Some("Alice"), 25, true).await;
+
+    // Upsert the same ID — should UPDATE and return updated row
+    let user: User = sqlx::query_as(
+        r#"INSERT INTO "users" ("id", "email", "name", "age", "active", "created_at")
+           VALUES (?, ?, ?, ?, ?, datetime('now'))
+           ON CONFLICT ("id") DO UPDATE SET
+             "name" = excluded."name",
+             "age" = excluded."age"
+           RETURNING *"#,
+    )
+    .bind("u1")
+    .bind("alice@test.com")
+    .bind("Alice Updated")
+    .bind(30i64)
+    .bind(1i64)
+    .fetch_one(&pool)
+    .await
+    .expect("upsert update");
+
+    assert_eq!(user.id, "u1");
+    assert_eq!(user.name, Some("Alice Updated".to_string()));
+    assert_eq!(user.age, 30);
+
+    // Still only 1 row
+    let count: (i64,) = sqlx::query_as(r#"SELECT COUNT(*) FROM "users""#)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count.0, 1);
+}
+
+#[tokio::test]
+async fn test_upsert_noop_update_returns_existing() {
+    let pool = setup_db().await;
+
+    insert_user(&pool, "u1", "alice@test.com", Some("Alice"), 25, true).await;
+
+    // Upsert with no-op update (SET id = id) — should return existing row unchanged
+    let user: User = sqlx::query_as(
+        r#"INSERT INTO "users" ("id", "email", "name", "age", "active", "created_at")
+           VALUES (?, ?, ?, ?, ?, datetime('now'))
+           ON CONFLICT ("id") DO UPDATE SET
+             "id" = "id"
+           RETURNING *"#,
+    )
+    .bind("u1")
+    .bind("alice@test.com")
+    .bind("Alice")
+    .bind(25i64)
+    .bind(1i64)
+    .fetch_one(&pool)
+    .await
+    .expect("upsert noop");
+
+    assert_eq!(user.id, "u1");
+    assert_eq!(user.name, Some("Alice".to_string()));
+    assert_eq!(user.age, 25);
+}
+
+#[tokio::test]
+async fn test_upsert_on_unique_column() {
+    let pool = setup_db().await;
+
+    // Create unique index on email
+    sqlx::query(r#"CREATE UNIQUE INDEX "idx_users_email" ON "users" ("email")"#)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    insert_user(&pool, "u1", "alice@test.com", Some("Alice"), 25, true).await;
+
+    // Upsert conflicting on email
+    let user: User = sqlx::query_as(
+        r#"INSERT INTO "users" ("id", "email", "name", "age", "active", "created_at")
+           VALUES (?, ?, ?, ?, ?, datetime('now'))
+           ON CONFLICT ("email") DO UPDATE SET
+             "name" = excluded."name"
+           RETURNING *"#,
+    )
+    .bind("u2")
+    .bind("alice@test.com")
+    .bind("Alicia")
+    .bind(25i64)
+    .bind(1i64)
+    .fetch_one(&pool)
+    .await
+    .expect("upsert on email");
+
+    assert_eq!(user.id, "u1");
+    assert_eq!(user.name, Some("Alicia".to_string()));
+}

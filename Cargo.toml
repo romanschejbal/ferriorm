@@ -12,7 +12,7 @@ members = [
 exclude = ["examples/basic"]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/romanschejbal/ferriorm"
@@ -22,11 +22,11 @@ categories = ["database"]
 
 [workspace.dependencies]
 # Internal crates
-ferriorm-core = { path = "crates/ferriorm-core", version = "0.1.2" }
-ferriorm-parser = { path = "crates/ferriorm-parser", version = "0.1.2" }
-ferriorm-codegen = { path = "crates/ferriorm-codegen", version = "0.1.2" }
-ferriorm-migrate = { path = "crates/ferriorm-migrate", version = "0.1.2" }
-ferriorm-runtime = { path = "crates/ferriorm-runtime", version = "0.1.2" }
+ferriorm-core = { path = "crates/ferriorm-core", version = "0.1.3" }
+ferriorm-parser = { path = "crates/ferriorm-parser", version = "0.1.3" }
+ferriorm-codegen = { path = "crates/ferriorm-codegen", version = "0.1.3" }
+ferriorm-migrate = { path = "crates/ferriorm-migrate", version = "0.1.3" }
+ferriorm-runtime = { path = "crates/ferriorm-runtime", version = "0.1.3" }
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "chrono", "uuid"] }

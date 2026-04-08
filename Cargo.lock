@@ -425,7 +425,7 @@ checksum = "a043dc74da1e37d6afe657061213aa6f425f855399a11d3463c6ecccc4dfda1f"
 
 [[package]]
 name = "ferriorm-cli"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "clap",
  "ferriorm-codegen",
@@ -442,7 +442,7 @@ dependencies = [
 
 [[package]]
 name = "ferriorm-codegen"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "ferriorm-core",
  "prettyplease",
@@ -453,7 +453,7 @@ dependencies = [
 
 [[package]]
 name = "ferriorm-core"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "serde",
 ]
@@ -476,7 +476,7 @@ dependencies = [
 
 [[package]]
 name = "ferriorm-migrate"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "chrono",
  "ferriorm-core",
@@ -493,7 +493,7 @@ dependencies = [
 
 [[package]]
 name = "ferriorm-parser"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "ferriorm-core",
  "miette",
@@ -504,7 +504,7 @@ dependencies = [
 
 [[package]]
 name = "ferriorm-runtime"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "chrono",
  "ferriorm-core",
