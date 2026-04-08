@@ -33,7 +33,7 @@ pub fn generate_model_module(model: &Model) -> TokenStream {
     let select_types = gen_select_types(model, &scalar_fields);
 
     quote! {
-        #![allow(unused_imports, dead_code, clippy::all, unused_variables)]
+        #![allow(unused_imports, dead_code, unused_variables, clippy::all, clippy::pedantic, clippy::nursery)]
 
         use serde::{Deserialize, Serialize};
         use ferriorm_runtime::prelude::*;

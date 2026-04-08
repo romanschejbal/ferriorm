@@ -115,6 +115,12 @@ sqlite:mydb.db?mode=rwc
 | `DateTime` | `chrono::DateTime<Utc>` | `TEXT` (ISO 8601) |
 | `enum Foo` | `Foo` (generated) | `TEXT` |
 
+## SQLite DateTime Handling
+
+SQLite's `CURRENT_TIMESTAMP` produces values in the format `YYYY-MM-DD HH:MM:SS` (without timezone). The sqlx chrono integration parses these values correctly, treating them as UTC. This means `@default(now())` works as expected on SQLite -- the value is stored as a TEXT column in ISO-like format and deserialized into `chrono::DateTime<Utc>` by sqlx.
+
+Note that `@default(uuid())` and `@default(cuid())` do not produce SQL-level defaults on SQLite. The UUID/CUID values are generated in Rust application code before the INSERT statement is executed, so the column will always receive a value from the application.
+
 ## Known Limitations
 
 | Limitation | Affects |

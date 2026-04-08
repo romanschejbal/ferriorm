@@ -29,6 +29,8 @@ pub fn generate_client_module(schema: &Schema) -> TokenStream {
         .collect();
 
     quote! {
+        #![allow(unused_imports, dead_code, unused_variables, clippy::all, clippy::pedantic, clippy::nursery)]
+
         use ferriorm_runtime::prelude::*;
 
         pub struct FerriormClient {

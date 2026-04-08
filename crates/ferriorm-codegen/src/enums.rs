@@ -17,6 +17,8 @@ pub fn generate_enums_module(enums: &[Enum]) -> TokenStream {
     let enum_defs: Vec<TokenStream> = enums.iter().map(generate_enum).collect();
 
     quote! {
+        #![allow(unused_imports, dead_code, unused_variables, clippy::all, clippy::pedantic, clippy::nursery)]
+
         use serde::{Deserialize, Serialize};
         use ferriorm_runtime::prelude::sqlx;
 

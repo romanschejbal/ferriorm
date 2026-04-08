@@ -31,7 +31,9 @@ cargo add ferriorm-runtime --features postgres,sqlite
 
 ## 3. Add required companion crates
 
-ferriorm's generated code depends on a few standard crates. Add them to your project:
+ferriorm's generated code depends on a few standard crates. Add them to your project.
+
+> **Important:** `sqlx` must be a **direct** dependency in your `Cargo.toml`. The generated code uses `#[derive(sqlx::FromRow)]`, which is a proc macro that expands to code referencing `::sqlx::` absolute paths internally. Transitive dependencies (through `ferriorm-runtime`) are not sufficient for absolute path resolution in Rust.
 
 ```bash
 cargo add sqlx --features runtime-tokio,tls-rustls,postgres,chrono,uuid

@@ -488,7 +488,14 @@ fn model_to_create_table(
             .primary_key
             .fields
             .iter()
-            .map(|f| to_snake_case(f))
+            .map(|pk_field| {
+                model
+                    .fields
+                    .iter()
+                    .find(|f| f.name == *pk_field || to_snake_case(&f.name) == *pk_field)
+                    .map(|f| f.db_name.clone())
+                    .unwrap_or_else(|| to_snake_case(pk_field))
+            })
             .collect(),
     }
 }
@@ -541,24 +548,34 @@ fn field_default_sql(
 ) -> Option<String> {
     use ferriorm_core::ast::{DefaultValue, LiteralValue};
 
-    field.default.as_ref().map(|d| match d {
+    field.default.as_ref().and_then(|d| match d {
         DefaultValue::Uuid => match provider {
-            ferriorm_core::types::DatabaseProvider::PostgreSQL => "gen_random_uuid()".to_string(),
-            _ => "''".to_string(), // SQLite doesn't have built-in UUID
+            ferriorm_core::types::DatabaseProvider::PostgreSQL => {
+                Some("gen_random_uuid()".to_string())
+            }
+            _ => None, // Application-level only for SQLite (UUID generated in Rust)
         },
-        DefaultValue::AutoIncrement => "".to_string(), // handled by SERIAL type
+        DefaultValue::Cuid => match provider {
+            ferriorm_core::types::DatabaseProvider::PostgreSQL => {
+                Some("gen_random_uuid()".to_string())
+            }
+            _ => None, // Application-level only for SQLite
+        },
+        DefaultValue::AutoIncrement => match provider {
+            ferriorm_core::types::DatabaseProvider::SQLite => None, // INTEGER PRIMARY KEY auto-increments without DEFAULT
+            _ => Some("".to_string()), // handled by SERIAL type on PostgreSQL
+        },
         DefaultValue::Now => match provider {
-            ferriorm_core::types::DatabaseProvider::PostgreSQL => "NOW()".to_string(),
-            _ => "CURRENT_TIMESTAMP".to_string(),
+            ferriorm_core::types::DatabaseProvider::PostgreSQL => Some("NOW()".to_string()),
+            _ => Some("CURRENT_TIMESTAMP".to_string()),
         },
-        DefaultValue::Cuid => "''".to_string(),
-        DefaultValue::Literal(lit) => match lit {
+        DefaultValue::Literal(lit) => Some(match lit {
             LiteralValue::String(s) => format!("'{s}'"),
             LiteralValue::Int(i) => i.to_string(),
             LiteralValue::Float(f) => f.to_string(),
             LiteralValue::Bool(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
-        },
-        DefaultValue::EnumVariant(v) => format!("'{}'", to_snake_case(v)),
+        }),
+        DefaultValue::EnumVariant(v) => Some(format!("'{}'", to_snake_case(v))),
     })
 }
 
@@ -706,6 +723,74 @@ mod tests {
 
         let steps = diff_schemas(&schema, &schema, DatabaseProvider::PostgreSQL);
         assert!(steps.is_empty());
+    }
+
+    /// Regression test for Bug 1: @map on @id should use the mapped column name
+    /// (db_name) in the PRIMARY KEY clause, not the schema field name.
+    #[test]
+    fn test_primary_key_uses_db_name_with_map() {
+        let mut id_field = make_field("id", ScalarType::String, true);
+        // Simulate @map("message_id") — the db_name differs from the field name
+        id_field.db_name = "message_id".to_string();
+
+        let model = make_model("Message", "messages", vec![id_field]);
+        let from = make_schema(vec![], vec![]);
+        let to = make_schema(vec![model], vec![]);
+
+        let steps = diff_schemas(&from, &to, DatabaseProvider::PostgreSQL);
+        assert_eq!(steps.len(), 1);
+
+        if let MigrationStep::CreateTable(ct) = &steps[0] {
+            assert_eq!(
+                ct.primary_key,
+                vec!["message_id"],
+                "PRIMARY KEY should use the @map db_name, not the schema field name"
+            );
+        } else {
+            panic!("Expected CreateTable step");
+        }
+    }
+
+    /// Regression test for Bug 2: @default(uuid()) should NOT generate
+    /// DEFAULT '' for SQLite. It should omit the DEFAULT clause entirely
+    /// since UUIDs are generated in application code.
+    #[test]
+    fn test_uuid_default_omitted_for_sqlite() {
+        use ferriorm_core::ast::DefaultValue;
+
+        let mut field = make_field("id", ScalarType::String, true);
+        field.default = Some(DefaultValue::Uuid);
+
+        // PostgreSQL should still get gen_random_uuid()
+        let pg_default = field_default_sql(&field, DatabaseProvider::PostgreSQL);
+        assert_eq!(
+            pg_default,
+            Some("gen_random_uuid()".to_string()),
+            "PostgreSQL should use gen_random_uuid()"
+        );
+
+        // SQLite should get None (no DEFAULT clause)
+        let sqlite_default = field_default_sql(&field, DatabaseProvider::SQLite);
+        assert_eq!(
+            sqlite_default, None,
+            "SQLite should omit DEFAULT for uuid() — it is handled in application code"
+        );
+    }
+
+    /// Regression test for Bug 2: @default(autoincrement()) should NOT generate
+    /// a DEFAULT clause for SQLite, since INTEGER PRIMARY KEY auto-increments.
+    #[test]
+    fn test_autoincrement_default_omitted_for_sqlite() {
+        use ferriorm_core::ast::DefaultValue;
+
+        let mut field = make_field("id", ScalarType::Int, true);
+        field.default = Some(DefaultValue::AutoIncrement);
+
+        let sqlite_default = field_default_sql(&field, DatabaseProvider::SQLite);
+        assert_eq!(
+            sqlite_default, None,
+            "SQLite should omit DEFAULT for autoincrement() — INTEGER PRIMARY KEY auto-increments"
+        );
     }
 
     #[test]
