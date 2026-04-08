@@ -155,6 +155,32 @@ let deleted = client
 println!("Deleted: {}", deleted.email);
 ```
 
+## Upsert
+
+Insert a record or update it if it already exists (based on the primary key). Uses `INSERT ... ON CONFLICT DO UPDATE` under the hood — works on both PostgreSQL and SQLite.
+
+```rust
+let user = client.user().upsert(
+    // Which unique field to match on:
+    user::filter::UserWhereUniqueInput::Email("alice@example.com".into()),
+    // Data to INSERT if not found:
+    user::data::UserCreateInput {
+        email: "alice@example.com".into(),
+        name: Some("Alice".into()),
+        role: None,
+        id: None,
+        created_at: None,
+    },
+    // Data to UPDATE if found:
+    user::data::UserUpdateInput {
+        name: Some(SetValue::Set(Some("Alice Updated".into()))),
+        ..Default::default()
+    },
+).exec().await?;
+```
+
+If no update fields are provided (`UpdateInput::default()`), the existing row is returned unchanged.
+
 ## Create Many
 
 Insert multiple records in a batch. Returns the number of records created.
