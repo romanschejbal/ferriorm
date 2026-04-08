@@ -1,11 +1,11 @@
-//! PostgreSQL SQL renderer for migration steps.
+//! `PostgreSQL` SQL renderer for migration steps.
 //!
 //! Generates PostgreSQL-specific DDL: `CREATE TYPE` for enums,
 //! `ALTER TABLE ... ALTER COLUMN` for column modifications, `$N` parameter
 //! placeholders, and `CASCADE` on `DROP TABLE`.
 
 use super::SqlRenderer;
-use crate::diff::*;
+use crate::diff::{ColumnChanges, ColumnDef, CreateTable, MigrationStep};
 
 pub struct PostgresRenderer;
 
@@ -85,7 +85,8 @@ fn render_step(step: &MigrationStep) -> String {
                 fk.on_update
             )
         }
-        MigrationStep::DropForeignKey { table, name } => {
+        MigrationStep::DropForeignKey { table, name }
+        | MigrationStep::DropUniqueConstraint { table, name } => {
             format!("ALTER TABLE \"{table}\" DROP CONSTRAINT IF EXISTS \"{name}\";\n")
         }
         MigrationStep::AddUniqueConstraint {
@@ -99,9 +100,6 @@ fn render_step(step: &MigrationStep) -> String {
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("ALTER TABLE \"{table}\" ADD CONSTRAINT \"{name}\" UNIQUE ({cols});\n")
-        }
-        MigrationStep::DropUniqueConstraint { table, name } => {
-            format!("ALTER TABLE \"{table}\" DROP CONSTRAINT IF EXISTS \"{name}\";\n")
         }
     }
 }
@@ -143,7 +141,8 @@ fn render_column_def(col: &ColumnDef) -> String {
     if let Some(default) = &col.default
         && !default.is_empty()
     {
-        s.push_str(&format!(" DEFAULT {default}"));
+        use std::fmt::Write;
+        let _ = write!(s, " DEFAULT {default}");
     }
 
     if col.is_unique {
@@ -154,23 +153,27 @@ fn render_column_def(col: &ColumnDef) -> String {
 }
 
 fn render_alter_column(table: &str, column: &str, changes: &ColumnChanges) -> String {
+    use std::fmt::Write;
     let mut sql = String::new();
 
     if let Some(new_type) = &changes.sql_type {
-        sql.push_str(&format!(
-            "ALTER TABLE \"{table}\" ALTER COLUMN \"{column}\" TYPE {new_type};\n"
-        ));
+        let _ = writeln!(
+            sql,
+            "ALTER TABLE \"{table}\" ALTER COLUMN \"{column}\" TYPE {new_type};"
+        );
     }
 
     if let Some(nullable) = changes.nullable {
         if nullable {
-            sql.push_str(&format!(
-                "ALTER TABLE \"{table}\" ALTER COLUMN \"{column}\" DROP NOT NULL;\n"
-            ));
+            let _ = writeln!(
+                sql,
+                "ALTER TABLE \"{table}\" ALTER COLUMN \"{column}\" DROP NOT NULL;"
+            );
         } else {
-            sql.push_str(&format!(
-                "ALTER TABLE \"{table}\" ALTER COLUMN \"{column}\" SET NOT NULL;\n"
-            ));
+            let _ = writeln!(
+                sql,
+                "ALTER TABLE \"{table}\" ALTER COLUMN \"{column}\" SET NOT NULL;"
+            );
         }
     }
 

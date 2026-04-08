@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 //! Core domain types for the ferriorm ecosystem.
 //!
 //! This crate is the foundation of ferriorm. It defines the Abstract Syntax Tree

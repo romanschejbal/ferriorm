@@ -6,8 +6,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 /// Nesting depth for module path resolution.
-/// `TopLevel` = model module (super::enums::X)
-/// `Nested` = inside a submodule like filter/data/order (super::super::enums::X)
+/// `TopLevel` = model module (`super::enums::X`)
+/// `Nested` = inside a submodule like filter/data/order (`super::super::enums::X`)
 #[derive(Debug, Clone, Copy)]
 pub enum ModuleDepth {
     TopLevel,
@@ -15,6 +15,7 @@ pub enum ModuleDepth {
 }
 
 /// Returns the token stream for the Rust type of a field.
+#[must_use]
 pub fn rust_type_tokens(field: &Field, depth: ModuleDepth) -> TokenStream {
     let base = match &field.field_type {
         FieldKind::Scalar(scalar) => scalar_to_tokens(scalar),
@@ -30,6 +31,7 @@ pub fn rust_type_tokens(field: &Field, depth: ModuleDepth) -> TokenStream {
 }
 
 /// Returns the token stream for an enum reference at the given depth.
+#[must_use]
 pub fn enum_path(name: &str, depth: ModuleDepth) -> TokenStream {
     let ident = quote::format_ident!("{}", name);
     match depth {
@@ -41,11 +43,10 @@ pub fn enum_path(name: &str, depth: ModuleDepth) -> TokenStream {
 /// Returns the token stream for a scalar type.
 fn scalar_to_tokens(scalar: &ScalarType) -> TokenStream {
     match scalar {
-        ScalarType::String => quote! { String },
+        ScalarType::String | ScalarType::Decimal => quote! { String },
         ScalarType::Int => quote! { i32 },
         ScalarType::BigInt => quote! { i64 },
         ScalarType::Float => quote! { f64 },
-        ScalarType::Decimal => quote! { String },
         ScalarType::Boolean => quote! { bool },
         ScalarType::DateTime => quote! { chrono::DateTime<chrono::Utc> },
         ScalarType::Json => quote! { serde_json::Value },
@@ -54,6 +55,7 @@ fn scalar_to_tokens(scalar: &ScalarType) -> TokenStream {
 }
 
 /// Returns the filter type name for a field type.
+#[must_use]
 pub fn filter_type_tokens(field: &Field, depth: ModuleDepth) -> Option<TokenStream> {
     match &field.field_type {
         FieldKind::Scalar(scalar) => {

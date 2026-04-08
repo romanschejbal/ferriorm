@@ -1,3 +1,5 @@
+#![allow(clippy::pedantic)]
+
 //! End-to-end migration tests using an in-memory SQLite database.
 //!
 //! These tests exercise the full migration lifecycle:

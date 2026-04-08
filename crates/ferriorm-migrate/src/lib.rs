@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 //! Migration engine with automatic schema diffing.
 //!
 //! This crate compares two [`ferriorm_core::schema::Schema`] versions (the

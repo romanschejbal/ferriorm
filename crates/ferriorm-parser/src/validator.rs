@@ -4,7 +4,7 @@
 //! parser and performs the following:
 //!
 //! - Resolves field type names to scalars, enums, or model references.
-//! - Infers database table and column names from `@@map`/`@map` or snake_case
+//! - Infers database table and column names from `@@map`/`@map` or `snake_case`
 //!   conventions.
 //! - Checks that every model has a primary key (`@id` or `@@id`).
 //! - Detects duplicate model/enum names and unknown type references.
@@ -17,11 +17,19 @@ use std::collections::HashSet;
 
 use ferriorm_core::ast;
 use ferriorm_core::error::CoreError;
-use ferriorm_core::schema::*;
+use ferriorm_core::schema::{
+    DatasourceConfig, Enum, Field, FieldKind, GeneratorConfig, Index, Model, PrimaryKey,
+    RelationType, ResolvedRelation, Schema, UniqueConstraint,
+};
 use ferriorm_core::types::{DatabaseProvider, ScalarType};
 use ferriorm_core::utils::to_snake_case;
 
 /// Validate a parsed AST and produce a resolved Schema IR.
+///
+/// # Errors
+///
+/// Returns a [`CoreError`] if the AST has validation problems such as
+/// missing primary keys, unknown types, or duplicate names.
 pub fn validate(ast: &ast::SchemaFile) -> Result<Schema, CoreError> {
     let datasource = validate_datasource(ast)?;
     let generators = validate_generators(ast)?;
@@ -296,6 +304,7 @@ fn validate_field(
 }
 
 #[cfg(test)]
+#[allow(clippy::pedantic)]
 mod tests {
     use super::*;
     use crate::parser::parse;

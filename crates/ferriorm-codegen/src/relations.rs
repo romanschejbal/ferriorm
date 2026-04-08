@@ -1,4 +1,4 @@
-//! Code generation for relation support: Include, WithRelations, batched loading.
+//! Code generation for relation support: Include, `WithRelations`, batched loading.
 
 use ferriorm_core::schema::{Field, FieldKind, Model, RelationType, Schema};
 use ferriorm_core::utils::to_snake_case;
@@ -10,13 +10,14 @@ pub struct RelationInfo<'a> {
     pub field: &'a Field,
     pub related_model: &'a Model,
     pub relation_type: RelationType,
-    /// The FK column on the "many" side (e.g., "author_id" on Post for User.posts)
+    /// The FK column on the "many" side (e.g., "`author_id`" on Post for User.posts)
     pub fk_column: String,
     /// The referenced column (e.g., "id" on User)
     pub ref_column: String,
 }
 
 /// Collect relation fields for a model, resolving against the full schema.
+#[must_use]
 pub fn collect_relations<'a>(model: &'a Model, schema: &'a Schema) -> Vec<RelationInfo<'a>> {
     let mut relations = Vec::new();
 
@@ -24,13 +25,13 @@ pub fn collect_relations<'a>(model: &'a Model, schema: &'a Schema) -> Vec<Relati
         if let Some(rel) = &field.relation {
             let related = schema.models.iter().find(|m| m.name == rel.related_model);
             if let Some(related_model) = related {
-                let (fk_column, ref_column) = if !rel.fields.is_empty() {
-                    // This side has the FK (ManyToOne)
-                    (rel.fields[0].clone(), rel.references[0].clone())
-                } else {
+                let (fk_column, ref_column) = if rel.fields.is_empty() {
                     // The other side has the FK (OneToMany) — find the back-reference
                     find_back_reference(model, related_model)
                         .unwrap_or_else(|| ("id".into(), "id".into()))
+                } else {
+                    // This side has the FK (ManyToOne)
+                    (rel.fields[0].clone(), rel.references[0].clone())
                 };
 
                 relations.push(RelationInfo {
@@ -78,7 +79,8 @@ fn find_back_reference(parent: &Model, child: &Model) -> Option<(String, String)
     None
 }
 
-/// Generate the Include struct, WithRelations struct, and include-aware query methods.
+/// Generate the Include struct, `WithRelations` struct, and include-aware query methods.
+#[must_use]
 pub fn gen_relation_types(model: &Model, schema: &Schema) -> TokenStream {
     let relations = collect_relations(model, schema);
 
@@ -147,7 +149,7 @@ pub fn gen_relation_types(model: &Model, schema: &Schema) -> TokenStream {
     }
 }
 
-/// Helper: generate code to load related rows using QueryBuilder and dispatch
+/// Helper: generate code to load related rows using `QueryBuilder` and dispatch
 /// to both Postgres and Sqlite.
 fn gen_batched_load_many(
     rel: &RelationInfo<'_>,
@@ -162,10 +164,7 @@ fn gen_batched_load_many(
     let related_struct = format_ident!("{}", rel.related_model.name);
     let related_table = &rel.related_model.db_name;
 
-    let select_base = format!(
-        r#"SELECT * FROM "{}" WHERE "{}" IN ("#,
-        related_table, lookup_col_str
-    );
+    let select_base = format!(r#"SELECT * FROM "{related_table}" WHERE "{lookup_col_str}" IN ("#);
 
     // Generate the row insertion code based on whether the FK is optional
     let insert_row_code = if fk_optional {
@@ -229,7 +228,7 @@ fn gen_batched_load_many(
     }
 }
 
-/// Helper: generate code to load related rows for a single-value (OneToOne / ManyToOne) relation.
+/// Helper: generate code to load related rows for a single-value (`OneToOne` / `ManyToOne`) relation.
 fn gen_batched_load_one(
     rel: &RelationInfo<'_>,
     load_var: &proc_macro2::Ident,
@@ -243,10 +242,7 @@ fn gen_batched_load_one(
     let related_struct = format_ident!("{}", rel.related_model.name);
     let related_table = &rel.related_model.db_name;
 
-    let select_base = format!(
-        r#"SELECT * FROM "{}" WHERE "{}" IN ("#,
-        related_table, lookup_col_str
-    );
+    let select_base = format!(r#"SELECT * FROM "{related_table}" WHERE "{lookup_col_str}" IN ("#);
 
     // When the FK field is optional (Option<String>), use filter_map to skip None values.
     let ids_collect = if fk_is_optional {
@@ -306,6 +302,7 @@ fn gen_batched_load_one(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn gen_load_arms(relations: &[RelationInfo<'_>], model: &Model) -> TokenStream {
     let _model_ident = format_ident!("{}", model.name);
     let with_relations_name = format_ident!("{}WithRelations", model.name);
@@ -362,7 +359,7 @@ fn gen_load_arms(relations: &[RelationInfo<'_>], model: &Model) -> TokenStream {
                     .iter()
                     .find(|f| to_snake_case(&f.name) == *fk_col_str && f.is_scalar());
                 let has_fk = fk_model_field.is_some();
-                let fk_is_optional = fk_model_field.map(|f| f.is_optional).unwrap_or(false);
+                let fk_is_optional = fk_model_field.is_some_and(|f| f.is_optional);
 
                 if has_fk {
                     relation_loads.push(gen_batched_load_one(
@@ -433,7 +430,8 @@ fn gen_load_arms(relations: &[RelationInfo<'_>], model: &Model) -> TokenStream {
     }
 }
 
-/// Generate `include()` and `exec_with_relations()` methods for FindMany.
+/// Generate `include()` and `exec_with_relations()` methods for `FindMany`.
+#[must_use]
 pub fn gen_find_many_include(model: &Model, schema: &Schema) -> TokenStream {
     let relations = collect_relations(model, schema);
     if relations.is_empty() {

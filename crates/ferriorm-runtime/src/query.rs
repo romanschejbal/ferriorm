@@ -1,7 +1,7 @@
 //! Parameterized SQL query builder.
 //!
 //! [`SqlBuilder`] constructs SQL strings with properly indexed parameter
-//! placeholders. It supports both PostgreSQL (`$1`, `$2`, ...) and SQLite
+//! placeholders. It supports both `PostgreSQL` (`$1`, `$2`, ...) and `SQLite`
 //! (`?`) placeholder styles, selected automatically based on the active
 //! [`DatabaseClient`]. The builder also provides safe identifier quoting to
 //! prevent SQL injection in table and column names.
@@ -11,13 +11,15 @@ use crate::client::DatabaseClient;
 /// Determines the SQL placeholder style.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParamStyle {
-    /// PostgreSQL: `$1`, `$2`, etc.
+    /// `PostgreSQL`: `$1`, `$2`, etc.
     Dollar,
     /// SQLite/MySQL: `?`
     QuestionMark,
 }
 
 impl ParamStyle {
+    /// Determine the placeholder style from a database client.
+    #[must_use]
     pub fn from_client(client: &DatabaseClient) -> Self {
         match client {
             #[cfg(feature = "postgres")]
@@ -31,7 +33,7 @@ impl ParamStyle {
 /// A safe parameterized SQL builder.
 ///
 /// Tracks parameter bindings and builds SQL strings with placeholders.
-/// Supports both PostgreSQL (`$1`) and SQLite (`?`) styles.
+/// Supports both `PostgreSQL` (`$1`) and `SQLite` (`?`) styles.
 ///
 /// Note: the generated client code uses `sqlx::QueryBuilder` directly for its
 /// queries. This builder is available for advanced use cases where manual SQL
@@ -44,6 +46,8 @@ pub struct SqlBuilder {
 }
 
 impl SqlBuilder {
+    /// Create a new SQL builder with the given placeholder style.
+    #[must_use]
     pub fn new(style: ParamStyle) -> Self {
         Self {
             sql: String::with_capacity(256),
@@ -52,6 +56,8 @@ impl SqlBuilder {
         }
     }
 
+    /// Create a new SQL builder with the placeholder style matching the client.
+    #[must_use]
     pub fn for_client(client: &DatabaseClient) -> Self {
         Self::new(ParamStyle::from_client(client))
     }
@@ -96,21 +102,25 @@ impl SqlBuilder {
     }
 
     /// Get the current parameter count.
+    #[must_use]
     pub fn param_count(&self) -> usize {
         self.param_count
     }
 
     /// Get the current parameter style.
+    #[must_use]
     pub fn style(&self) -> ParamStyle {
         self.style
     }
 
     /// Consume the builder and return the SQL string.
+    #[must_use]
     pub fn build(self) -> String {
         self.sql
     }
 
     /// Get the SQL string by reference.
+    #[must_use]
     pub fn sql(&self) -> &str {
         &self.sql
     }

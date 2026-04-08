@@ -16,10 +16,11 @@ pub trait SqlRenderer {
 }
 
 /// Get the SQL renderer for the given provider.
+#[must_use]
 pub fn renderer_for(provider: ferriorm_core::types::DatabaseProvider) -> Box<dyn SqlRenderer> {
     match provider {
-        ferriorm_core::types::DatabaseProvider::PostgreSQL => Box::new(postgres::PostgresRenderer),
+        ferriorm_core::types::DatabaseProvider::PostgreSQL
+        | ferriorm_core::types::DatabaseProvider::MySQL => Box::new(postgres::PostgresRenderer), // TODO: MySQL renderer
         ferriorm_core::types::DatabaseProvider::SQLite => Box::new(sqlite::SqliteRenderer),
-        _ => Box::new(postgres::PostgresRenderer), // TODO: MySQL renderer
     }
 }

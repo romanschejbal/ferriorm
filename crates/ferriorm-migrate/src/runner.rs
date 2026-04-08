@@ -34,6 +34,7 @@ pub enum MigrationStrategy {
     Snapshot,
 }
 
+/// Orchestrates creating, applying, and managing database migrations.
 pub struct MigrationRunner {
     migrations_dir: PathBuf,
     provider: ferriorm_core::types::DatabaseProvider,
@@ -41,6 +42,8 @@ pub struct MigrationRunner {
 }
 
 impl MigrationRunner {
+    /// Create a new migration runner.
+    #[must_use]
     pub fn new(
         migrations_dir: PathBuf,
         provider: ferriorm_core::types::DatabaseProvider,
@@ -57,6 +60,10 @@ impl MigrationRunner {
     ///
     /// For `ShadowDatabase` strategy: needs `database_url` to create a temp DB.
     /// For `Snapshot` strategy: `database_url` is not used.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`MigrateError`] if the diff, shadow database, or file I/O fails.
     pub async fn create_migration(
         &self,
         current_schema: &ferriorm_core::schema::Schema,
@@ -140,7 +147,15 @@ impl MigrationRunner {
         Ok(Some(migration_dir))
     }
 
-    /// Apply all pending migrations to the database (PostgreSQL).
+    /// Apply all pending migrations to the database (`PostgreSQL`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`MigrateError`] if any migration fails or has a checksum mismatch.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a migration directory has no file name (should not happen in practice).
     #[cfg(feature = "postgres")]
     pub async fn apply_pending(&self, pool: &PgPool) -> Result<Vec<String>, MigrateError> {
         state::ensure_table(pool)
@@ -202,7 +217,15 @@ impl MigrationRunner {
         Ok(applied_new)
     }
 
-    /// Apply all pending migrations to the database (SQLite).
+    /// Apply all pending migrations to the database (`SQLite`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`MigrateError`] if any migration fails or has a checksum mismatch.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a migration directory has no file name (should not happen in practice).
     #[cfg(feature = "sqlite")]
     pub async fn apply_pending_sqlite(
         &self,
@@ -275,7 +298,11 @@ impl MigrationRunner {
         Ok(applied_new)
     }
 
-    /// Get the status of all migrations (PostgreSQL).
+    /// Get the status of all migrations (`PostgreSQL`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`MigrateError`] if the database query fails.
     #[cfg(feature = "postgres")]
     pub async fn status(&self, pool: &PgPool) -> Result<Vec<MigrationStatus>, MigrateError> {
         state::ensure_table(pool)
@@ -289,7 +316,11 @@ impl MigrationRunner {
         self.build_status_list(&applied)
     }
 
-    /// Get the status of all migrations (SQLite).
+    /// Get the status of all migrations (`SQLite`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`MigrateError`] if the database query fails.
     #[cfg(feature = "sqlite")]
     pub async fn status_sqlite(
         &self,
@@ -347,7 +378,7 @@ impl MigrationRunner {
 
         let mut entries: Vec<PathBuf> = std::fs::read_dir(&self.migrations_dir)
             .map_err(|e| MigrateError::Io(e.to_string()))?
-            .filter_map(|e| e.ok())
+            .filter_map(std::result::Result::ok)
             .filter(|e| e.path().is_dir())
             .filter(|e| e.path().join("migration.sql").exists())
             .map(|e| e.path())
@@ -360,8 +391,7 @@ impl MigrationRunner {
     fn next_sequence_number(&self) -> u32 {
         self.list_migrations()
             .ok()
-            .map(|m| m.len() as u32 + 1)
-            .unwrap_or(1)
+            .map_or(1, |m| u32::try_from(m.len()).unwrap_or(u32::MAX) + 1)
     }
 }
 

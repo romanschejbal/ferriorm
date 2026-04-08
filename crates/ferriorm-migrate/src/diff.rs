@@ -5,7 +5,7 @@
 //! list of [`MigrationStep`]s (create table, add column, alter column, etc.).
 //! These steps are then rendered into SQL by the [`super::sql`] module.
 
-use ferriorm_core::schema::*;
+use ferriorm_core::schema::{Enum, Field, FieldKind, Index, Model, Schema};
 use ferriorm_core::utils::to_snake_case;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -100,6 +100,7 @@ pub struct ForeignKeyDef {
 }
 
 /// Compare two schemas and produce the migration steps.
+#[must_use]
 pub fn diff_schemas(
     from: &Schema,
     to: &Schema,
@@ -291,7 +292,7 @@ fn diff_models(
     for name in from_map.keys() {
         if !to_map.contains_key(name) {
             steps.push(MigrationStep::DropTable {
-                name: name.to_string(),
+                name: (*name).to_string(),
             });
         }
     }
@@ -340,7 +341,7 @@ fn diff_columns(
         if !to_cols.contains_key(col_name) {
             steps.push(MigrationStep::DropColumn {
                 table: table.to_string(),
-                column: col_name.to_string(),
+                column: (*col_name).to_string(),
             });
         }
     }
@@ -353,7 +354,7 @@ fn diff_columns(
             {
                 steps.push(MigrationStep::AlterColumn {
                     table: table.to_string(),
-                    column: col_name.to_string(),
+                    column: (*col_name).to_string(),
                     changes,
                 });
             }
@@ -371,15 +372,15 @@ fn diff_column(
     let to_type = field_sql_type(&to.field_type, provider, enums);
 
     ColumnChanges {
-        sql_type: if from_type != to_type {
+        sql_type: if from_type == to_type {
+            None
+        } else {
             Some(to_type)
-        } else {
-            None
         },
-        nullable: if from.is_optional != to.is_optional {
-            Some(to.is_optional)
-        } else {
+        nullable: if from.is_optional == to.is_optional {
             None
+        } else {
+            Some(to.is_optional)
         },
         default: None, // TODO: diff defaults
     }
@@ -460,7 +461,7 @@ fn diff_indexes(from: &[Model], to: &[Model], steps: &mut Vec<MigrationStep>) {
             );
             if !from_indexes.iter().any(|fi| fi.fields == idx.fields) {
                 steps.push(MigrationStep::CreateIndex {
-                    table: name.to_string(),
+                    table: (*name).to_string(),
                     name: idx_name,
                     columns: idx.fields.iter().map(|f| to_snake_case(f)).collect(),
                 });
@@ -493,8 +494,7 @@ fn model_to_create_table(
                     .fields
                     .iter()
                     .find(|f| f.name == *pk_field || to_snake_case(&f.name) == *pk_field)
-                    .map(|f| f.db_name.clone())
-                    .unwrap_or_else(|| to_snake_case(pk_field))
+                    .map_or_else(|| to_snake_case(pk_field), |f| f.db_name.clone())
             })
             .collect(),
     }
@@ -531,8 +531,7 @@ fn field_sql_type(
             let db_name = enums
                 .iter()
                 .find(|e| e.name == *name)
-                .map(|e| e.db_name.clone())
-                .unwrap_or_else(|| to_snake_case(name));
+                .map_or_else(|| to_snake_case(name), |e| e.db_name.clone());
             match provider {
                 ferriorm_core::types::DatabaseProvider::PostgreSQL => db_name,
                 _ => "TEXT".to_string(),
@@ -549,13 +548,7 @@ fn field_default_sql(
     use ferriorm_core::ast::{DefaultValue, LiteralValue};
 
     field.default.as_ref().and_then(|d| match d {
-        DefaultValue::Uuid => match provider {
-            ferriorm_core::types::DatabaseProvider::PostgreSQL => {
-                Some("gen_random_uuid()".to_string())
-            }
-            _ => None, // Application-level only for SQLite (UUID generated in Rust)
-        },
-        DefaultValue::Cuid => match provider {
+        DefaultValue::Uuid | DefaultValue::Cuid => match provider {
             ferriorm_core::types::DatabaseProvider::PostgreSQL => {
                 Some("gen_random_uuid()".to_string())
             }
@@ -563,7 +556,7 @@ fn field_default_sql(
         },
         DefaultValue::AutoIncrement => match provider {
             ferriorm_core::types::DatabaseProvider::SQLite => None, // INTEGER PRIMARY KEY auto-increments without DEFAULT
-            _ => Some("".to_string()), // handled by SERIAL type on PostgreSQL
+            _ => Some(String::new()), // handled by SERIAL type on PostgreSQL
         },
         DefaultValue::Now => match provider {
             ferriorm_core::types::DatabaseProvider::PostgreSQL => Some("NOW()".to_string()),
@@ -590,8 +583,10 @@ fn referential_action_sql(action: ferriorm_core::ast::ReferentialAction) -> Stri
 }
 
 #[cfg(test)]
+#[allow(clippy::pedantic)]
 mod tests {
     use super::*;
+    use ferriorm_core::schema::PrimaryKey;
     use ferriorm_core::types::{DatabaseProvider, ScalarType};
     use ferriorm_core::utils::to_snake_case;
 

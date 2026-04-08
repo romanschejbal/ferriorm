@@ -12,6 +12,8 @@ pub enum SortOrder {
 }
 
 impl SortOrder {
+    /// Returns the SQL keyword for this sort direction.
+    #[must_use]
     pub fn as_sql(&self) -> &'static str {
         match self {
             Self::Asc => "ASC",

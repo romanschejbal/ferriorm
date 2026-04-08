@@ -78,7 +78,7 @@ pub struct BoolFilter {
     pub not: Option<bool>,
 }
 
-/// Filter operations for DateTime fields.
+/// Filter operations for `DateTime` fields.
 #[derive(Debug, Clone, Default)]
 pub struct DateTimeFilter {
     pub equals: Option<chrono::DateTime<chrono::Utc>>,

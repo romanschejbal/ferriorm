@@ -9,6 +9,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
 /// Generate the `enums.rs` module containing all enum definitions.
+#[must_use]
 pub fn generate_enums_module(enums: &[Enum]) -> TokenStream {
     if enums.is_empty() {
         return quote! {};

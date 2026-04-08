@@ -11,24 +11,33 @@ use ferriorm_core::schema::Schema;
 use std::path::Path;
 
 /// Serialize a schema to JSON for storage alongside migrations.
+///
+/// # Errors
+///
+/// Returns a [`serde_json::Error`] if serialization fails.
 pub fn serialize(schema: &Schema) -> Result<String, serde_json::Error> {
     serde_json::to_string_pretty(schema)
 }
 
 /// Deserialize a schema from a JSON snapshot.
+///
+/// # Errors
+///
+/// Returns a [`serde_json::Error`] if deserialization fails.
 pub fn deserialize(json: &str) -> Result<Schema, serde_json::Error> {
     serde_json::from_str(json)
 }
 
 /// Load the most recent schema snapshot from the migrations directory.
+#[must_use]
 pub fn load_latest_snapshot(migrations_dir: &Path) -> Option<Schema> {
     let mut entries: Vec<_> = std::fs::read_dir(migrations_dir)
         .ok()?
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.path().is_dir())
         .collect();
 
-    entries.sort_by_key(|e| e.file_name());
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     // Find the latest migration directory with a snapshot
     for entry in entries.iter().rev() {
@@ -43,6 +52,7 @@ pub fn load_latest_snapshot(migrations_dir: &Path) -> Option<Schema> {
 }
 
 /// Create an empty schema (for the first migration).
+#[must_use]
 pub fn empty_schema(provider: ferriorm_core::types::DatabaseProvider) -> Schema {
     Schema {
         datasource: ferriorm_core::schema::DatasourceConfig {

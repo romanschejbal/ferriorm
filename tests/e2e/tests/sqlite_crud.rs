@@ -1,3 +1,5 @@
+#![allow(clippy::pedantic)]
+
 //! End-to-end CRUD tests against an in-memory SQLite database.
 //!
 //! Strategy:

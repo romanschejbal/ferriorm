@@ -1,8 +1,10 @@
+#![warn(clippy::pedantic)]
+
 //! Runtime library shipped with the user's application.
 //!
 //! This crate provides everything the generated ferriorm client needs at runtime:
 //!
-//! - [`client::DatabaseClient`] -- connection pool wrapper (PostgreSQL + SQLite)
+//! - [`client::DatabaseClient`] -- connection pool wrapper (`PostgreSQL` + `SQLite`)
 //! - [`filter`] -- type-safe filter structs (`StringFilter`, `IntFilter`, ...)
 //! - [`query::SqlBuilder`] -- parameterized SQL builder supporting `$1` and `?` styles
 //! - [`order`] -- `SortOrder` and `OrderByClause` trait

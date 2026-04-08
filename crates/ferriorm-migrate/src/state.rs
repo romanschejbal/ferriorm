@@ -4,7 +4,7 @@
 //! each applied migration's name, SHA-256 checksum, and timestamp. It provides
 //! functions to create the table, list applied migrations, mark new ones as
 //! applied, and clear all records (for reset). Separate implementations exist
-//! for PostgreSQL and SQLite.
+//! for `PostgreSQL` and `SQLite`.
 
 use chrono::{DateTime, Utc};
 
@@ -26,7 +26,11 @@ const MIGRATIONS_TABLE: &str = "_ferriorm_migrations";
 
 // ─── PostgreSQL ───────────────────────────────────────────────────
 
-/// Ensure the migrations tracking table exists (PostgreSQL).
+/// Ensure the migrations tracking table exists (`PostgreSQL`).
+///
+/// # Errors
+///
+/// Returns a [`sqlx::Error`] if the DDL query fails.
 #[cfg(feature = "postgres")]
 pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query(&format!(
@@ -44,7 +48,11 @@ pub async fn ensure_table(pool: &PgPool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-/// Get all applied migrations, ordered by id (PostgreSQL).
+/// Get all applied migrations, ordered by id (`PostgreSQL`).
+///
+/// # Errors
+///
+/// Returns a [`sqlx::Error`] if the query fails.
 #[cfg(feature = "postgres")]
 pub async fn get_applied(pool: &PgPool) -> Result<Vec<AppliedMigration>, sqlx::Error> {
     sqlx::query_as::<_, AppliedMigration>(&format!(
@@ -54,7 +62,11 @@ pub async fn get_applied(pool: &PgPool) -> Result<Vec<AppliedMigration>, sqlx::E
     .await
 }
 
-/// Record a migration as applied (PostgreSQL).
+/// Record a migration as applied (`PostgreSQL`).
+///
+/// # Errors
+///
+/// Returns a [`sqlx::Error`] if the insert fails.
 #[cfg(feature = "postgres")]
 pub async fn mark_applied(pool: &PgPool, name: &str, checksum: &str) -> Result<(), sqlx::Error> {
     sqlx::query(&format!(
@@ -67,7 +79,11 @@ pub async fn mark_applied(pool: &PgPool, name: &str, checksum: &str) -> Result<(
     Ok(())
 }
 
-/// Remove a migration record (for reset) (PostgreSQL).
+/// Remove a migration record (for reset) (`PostgreSQL`).
+///
+/// # Errors
+///
+/// Returns a [`sqlx::Error`] if the delete fails.
 #[cfg(feature = "postgres")]
 pub async fn clear_all(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query(&format!(r#"DELETE FROM "{MIGRATIONS_TABLE}""#))
@@ -80,8 +96,8 @@ pub async fn clear_all(pool: &PgPool) -> Result<(), sqlx::Error> {
 
 /// SQLite-specific applied migration row.
 ///
-/// SQLite stores `applied_at` as TEXT (ISO-8601), so we need a separate
-/// FromRow type to read it as a string and then parse it.
+/// `SQLite` stores `applied_at` as TEXT (ISO-8601), so we need a separate
+/// `FromRow` type to read it as a string and then parse it.
 #[cfg(feature = "sqlite")]
 #[derive(Debug, Clone, sqlx::FromRow)]
 struct SqliteAppliedMigrationRow {
@@ -91,7 +107,11 @@ struct SqliteAppliedMigrationRow {
     applied_at: String,
 }
 
-/// Ensure the migrations tracking table exists (SQLite).
+/// Ensure the migrations tracking table exists (`SQLite`).
+///
+/// # Errors
+///
+/// Returns a [`sqlx::Error`] if the DDL query fails.
 #[cfg(feature = "sqlite")]
 pub async fn ensure_table_sqlite(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::query(&format!(
@@ -109,7 +129,11 @@ pub async fn ensure_table_sqlite(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-/// Get all applied migrations, ordered by id (SQLite).
+/// Get all applied migrations, ordered by id (`SQLite`).
+///
+/// # Errors
+///
+/// Returns a [`sqlx::Error`] if the query fails.
 #[cfg(feature = "sqlite")]
 pub async fn get_applied_sqlite(pool: &SqlitePool) -> Result<Vec<AppliedMigration>, sqlx::Error> {
     let rows = sqlx::query_as::<_, SqliteAppliedMigrationRow>(&format!(
@@ -136,7 +160,11 @@ pub async fn get_applied_sqlite(pool: &SqlitePool) -> Result<Vec<AppliedMigratio
         .collect())
 }
 
-/// Record a migration as applied (SQLite).
+/// Record a migration as applied (`SQLite`).
+///
+/// # Errors
+///
+/// Returns a [`sqlx::Error`] if the insert fails.
 #[cfg(feature = "sqlite")]
 pub async fn mark_applied_sqlite(
     pool: &SqlitePool,
@@ -153,7 +181,11 @@ pub async fn mark_applied_sqlite(
     Ok(())
 }
 
-/// Remove all migration records (for reset) (SQLite).
+/// Remove all migration records (for reset) (`SQLite`).
+///
+/// # Errors
+///
+/// Returns a [`sqlx::Error`] if the delete fails.
 #[cfg(feature = "sqlite")]
 pub async fn clear_all_sqlite(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::query(&format!(r#"DELETE FROM "{MIGRATIONS_TABLE}""#))

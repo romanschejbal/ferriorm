@@ -20,7 +20,11 @@ use crate::introspect;
 /// Run the shadow database diffing process and return the introspected schema.
 ///
 /// `main_url` is the connection URL for the main database (used to connect
-/// to PostgreSQL to create/drop the shadow database).
+/// to `PostgreSQL` to create/drop the shadow database).
+///
+/// # Errors
+///
+/// Returns a [`ShadowError`] if any step of the shadow database process fails.
 #[cfg(feature = "postgres")]
 pub async fn introspect_via_shadow(
     main_url: &str,
@@ -99,12 +103,12 @@ async fn apply_migrations_to_shadow_pg(
 
     let mut entries: Vec<_> = std::fs::read_dir(migrations_dir)
         .map_err(|e| ShadowError::Io(e.to_string()))?
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.path().is_dir())
         .filter(|e| e.path().join("migration.sql").exists())
         .collect();
 
-    entries.sort_by_key(|e| e.file_name());
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let sql_path = entry.path().join("migration.sql");
@@ -123,11 +127,15 @@ async fn apply_migrations_to_shadow_pg(
 
 // ─── SQLite shadow database ──────────────────────────────────────
 
-/// Run the shadow database diffing process for SQLite.
+/// Run the shadow database diffing process for `SQLite`.
 ///
-/// For SQLite, the shadow database is simply a temporary file.
-/// No server connection is needed — we create a temp file, replay migrations,
+/// For `SQLite`, the shadow database is simply a temporary file.
+/// No server connection is needed -- we create a temp file, replay migrations,
 /// introspect the result, then delete the temp file.
+///
+/// # Errors
+///
+/// Returns a [`ShadowError`] if any step of the shadow database process fails.
 #[cfg(feature = "sqlite")]
 pub async fn introspect_via_shadow_sqlite(
     migrations_dir: &Path,
@@ -184,12 +192,12 @@ async fn apply_migrations_to_shadow_sqlite(
 
     let mut entries: Vec<_> = std::fs::read_dir(migrations_dir)
         .map_err(|e| ShadowError::Io(e.to_string()))?
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.path().is_dir())
         .filter(|e| e.path().join("migration.sql").exists())
         .collect();
 
-    entries.sort_by_key(|e| e.file_name());
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         let sql_path = entry.path().join("migration.sql");
@@ -210,7 +218,7 @@ async fn apply_migrations_to_shadow_sqlite(
 
 // ─── URL helpers (PostgreSQL) ────────────────────────────────────
 
-/// Strip the database name from a PostgreSQL URL, connecting to the default 'postgres' database.
+/// Strip the database name from a `PostgreSQL` URL, connecting to the default 'postgres' database.
 #[cfg(feature = "postgres")]
 fn strip_database_from_url(url: &str) -> String {
     // postgres://user:pass@host:port/dbname -> postgres://user:pass@host:port/postgres
@@ -228,7 +236,7 @@ fn strip_database_from_url(url: &str) -> String {
     }
 }
 
-/// Replace the database name in a PostgreSQL URL.
+/// Replace the database name in a `PostgreSQL` URL.
 #[cfg(feature = "postgres")]
 fn replace_database_in_url(url: &str, new_db: &str) -> String {
     if let Some(pos) = url.rfind('/') {

@@ -1,3 +1,5 @@
+#![allow(clippy::pedantic)]
+
 //! End-to-end tests for parsing a schema and generating Rust code.
 //!
 //! These tests verify the full pipeline: parse schema string -> validate ->

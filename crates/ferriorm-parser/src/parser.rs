@@ -7,7 +7,10 @@
 //! This module only handles syntactic parsing. Semantic validation (type
 //! resolution, constraint checking) is performed by [`crate::validator`].
 
-use ferriorm_core::ast::*;
+use ferriorm_core::ast::{
+    BlockAttribute, DefaultValue, EnumDef, FieldAttribute, FieldDef, FieldType, Generator,
+    LiteralValue, ModelDef, ReferentialAction, RelationAttribute, SchemaFile, Span, StringOrEnv,
+};
 use pest::Parser;
 use pest_derive::Parser;
 
@@ -18,6 +21,15 @@ use crate::error::ParseError;
 struct FerriormParser;
 
 /// Parse a `.ferriorm` schema string into an AST.
+///
+/// # Errors
+///
+/// Returns a [`ParseError`] if the source does not conform to the grammar.
+///
+/// # Panics
+///
+/// Panics if the PEG grammar produces no top-level pair, which indicates
+/// a bug in the grammar definition.
 pub fn parse(source: &str) -> Result<SchemaFile, ParseError> {
     let pairs = FerriormParser::parse(Rule::schema, source)
         .map_err(|e| ParseError::Syntax(e.to_string()))?;
@@ -37,15 +49,14 @@ pub fn parse(source: &str) -> Result<SchemaFile, ParseError> {
                 schema.datasource = Some(parse_datasource(pair)?);
             }
             Rule::generator_block => {
-                schema.generators.push(parse_generator(pair)?);
+                schema.generators.push(parse_generator(pair));
             }
             Rule::enum_block => {
-                schema.enums.push(parse_enum(pair)?);
+                schema.enums.push(parse_enum(pair));
             }
             Rule::model_block => {
                 schema.models.push(parse_model(pair)?);
             }
-            Rule::EOI => {}
             _ => {}
         }
     }
@@ -61,7 +72,9 @@ fn span_from(pair: &pest::iterators::Pair<'_, Rule>) -> Span {
     }
 }
 
-fn parse_datasource(pair: pest::iterators::Pair<'_, Rule>) -> Result<Datasource, ParseError> {
+fn parse_datasource(
+    pair: pest::iterators::Pair<'_, Rule>,
+) -> Result<ferriorm_core::ast::Datasource, ParseError> {
     let span = span_from(&pair);
     let mut inner = pair.into_inner();
     let name = inner.next().unwrap().as_str().to_string();
@@ -88,7 +101,7 @@ fn parse_datasource(pair: pest::iterators::Pair<'_, Rule>) -> Result<Datasource,
         }
     }
 
-    Ok(Datasource {
+    Ok(ferriorm_core::ast::Datasource {
         name,
         provider,
         url,
@@ -96,7 +109,7 @@ fn parse_datasource(pair: pest::iterators::Pair<'_, Rule>) -> Result<Datasource,
     })
 }
 
-fn parse_generator(pair: pest::iterators::Pair<'_, Rule>) -> Result<Generator, ParseError> {
+fn parse_generator(pair: pest::iterators::Pair<'_, Rule>) -> Generator {
     let span = span_from(&pair);
     let mut inner = pair.into_inner();
     let name = inner.next().unwrap().as_str().to_string();
@@ -116,10 +129,10 @@ fn parse_generator(pair: pest::iterators::Pair<'_, Rule>) -> Result<Generator, P
         }
     }
 
-    Ok(Generator { name, output, span })
+    Generator { name, output, span }
 }
 
-fn parse_enum(pair: pest::iterators::Pair<'_, Rule>) -> Result<EnumDef, ParseError> {
+fn parse_enum(pair: pest::iterators::Pair<'_, Rule>) -> EnumDef {
     let span = span_from(&pair);
     let mut inner = pair.into_inner();
     let name = inner.next().unwrap().as_str().to_string();
@@ -137,12 +150,12 @@ fn parse_enum(pair: pest::iterators::Pair<'_, Rule>) -> Result<EnumDef, ParseErr
         }
     }
 
-    Ok(EnumDef {
+    EnumDef {
         name,
         variants,
         db_name: None,
         span,
-    })
+    }
 }
 
 fn parse_model(pair: pest::iterators::Pair<'_, Rule>) -> Result<ModelDef, ParseError> {
@@ -249,7 +262,7 @@ fn parse_field_attribute(
             Ok(Some(FieldAttribute::Map(unquote(s))))
         }
         Rule::attr_relation => {
-            let relation = parse_relation_attribute(pair)?;
+            let relation = parse_relation_attribute(pair);
             Ok(Some(FieldAttribute::Relation(relation)))
         }
         Rule::attr_db_type => {
@@ -309,9 +322,7 @@ fn parse_default_value(pair: pest::iterators::Pair<'_, Rule>) -> Result<DefaultV
     }
 }
 
-fn parse_relation_attribute(
-    pair: pest::iterators::Pair<'_, Rule>,
-) -> Result<RelationAttribute, ParseError> {
+fn parse_relation_attribute(pair: pest::iterators::Pair<'_, Rule>) -> RelationAttribute {
     let args_pair = pair.into_inner().next().unwrap(); // relation_args
     let mut fields = Vec::new();
     let mut references = Vec::new();
@@ -345,13 +356,13 @@ fn parse_relation_attribute(
         }
     }
 
-    Ok(RelationAttribute {
+    RelationAttribute {
         name,
         fields,
         references,
         on_delete,
         on_update,
-    })
+    }
 }
 
 fn parse_referential_action(pair: &pest::iterators::Pair<'_, Rule>) -> Option<ReferentialAction> {
@@ -416,6 +427,7 @@ fn unquote(s: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::pedantic)]
 mod tests {
     use super::*;
 

@@ -1,8 +1,8 @@
 //! Fundamental type definitions shared across the ferriorm ecosystem.
 //!
-//! This module defines [`DatabaseProvider`] (PostgreSQL, SQLite, MySQL) and
-//! [`ScalarType`] (String, Int, DateTime, etc.) along with their mappings to
-//! Rust types, PostgreSQL column types, and SQLite column types.
+//! This module defines [`DatabaseProvider`] (`PostgreSQL`, `SQLite`, `MySQL`) and
+//! [`ScalarType`] (String, Int, `DateTime`, etc.) along with their mappings to
+//! Rust types, `PostgreSQL` column types, and `SQLite` column types.
 
 use std::fmt;
 use std::str::FromStr;
@@ -30,6 +30,8 @@ impl FromStr for DatabaseProvider {
 }
 
 impl DatabaseProvider {
+    /// Returns the string representation of this database provider.
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::PostgreSQL => "postgresql",
@@ -56,7 +58,7 @@ pub enum ScalarType {
 
 impl fmt::Display for ScalarType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -81,6 +83,7 @@ impl FromStr for ScalarType {
 
 impl ScalarType {
     /// The Rust type this scalar maps to.
+    #[must_use]
     pub fn rust_type(&self) -> &'static str {
         match self {
             Self::String => "String",
@@ -95,7 +98,8 @@ impl ScalarType {
         }
     }
 
-    /// The PostgreSQL column type.
+    /// The `PostgreSQL` column type.
+    #[must_use]
     pub fn postgres_type(&self) -> &'static str {
         match self {
             Self::String => "TEXT",
@@ -110,17 +114,13 @@ impl ScalarType {
         }
     }
 
-    /// The SQLite column type.
+    /// The `SQLite` column type.
+    #[must_use]
     pub fn sqlite_type(&self) -> &'static str {
         match self {
-            Self::String => "TEXT",
-            Self::Int => "INTEGER",
-            Self::BigInt => "INTEGER",
+            Self::String | Self::Decimal | Self::DateTime | Self::Json => "TEXT",
+            Self::Int | Self::BigInt | Self::Boolean => "INTEGER",
             Self::Float => "REAL",
-            Self::Decimal => "TEXT",
-            Self::Boolean => "INTEGER",
-            Self::DateTime => "TEXT",
-            Self::Json => "TEXT",
             Self::Bytes => "BLOB",
         }
     }

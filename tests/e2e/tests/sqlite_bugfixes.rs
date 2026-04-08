@@ -1,3 +1,5 @@
+#![allow(clippy::pedantic)]
+
 //! Regression tests for SQLite-specific bug fixes.
 //!
 //! Bug 1: Foreign keys rendered as inline REFERENCES in CREATE TABLE (not comments).

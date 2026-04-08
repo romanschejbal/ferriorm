@@ -6,7 +6,7 @@
 //! Key differences from the raw AST:
 //! - Type names are resolved to [`FieldKind::Scalar`], [`FieldKind::Enum`],
 //!   or [`FieldKind::Model`].
-//! - Table and column names are inferred (snake_case + plural) or taken from
+//! - Table and column names are inferred (`snake_case` + plural) or taken from
 //!   `@@map` / `@map` attributes.
 //! - Relations are fully resolved with cardinality and referential actions.
 //! - Primary keys, indexes, and unique constraints are normalized.
@@ -102,11 +102,13 @@ serde_derive! {
 
 impl Field {
     /// Returns true if this field is a scalar (stored in the database), not a relation.
+    #[must_use]
     pub fn is_scalar(&self) -> bool {
         !matches!(self.field_type, FieldKind::Model(_)) && !self.is_list
     }
 
     /// Returns true if this field has a server-side default and can be omitted on create.
+    #[must_use]
     pub fn has_default(&self) -> bool {
         self.default.is_some() || self.is_updated_at
     }
@@ -158,6 +160,8 @@ serde_derive! {
 }
 
 impl PrimaryKey {
+    /// Returns true if this is a composite (multi-field) primary key.
+    #[must_use]
     pub fn is_composite(&self) -> bool {
         self.fields.len() > 1
     }

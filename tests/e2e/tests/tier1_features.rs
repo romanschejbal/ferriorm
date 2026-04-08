@@ -1,3 +1,5 @@
+#![allow(clippy::pedantic)]
+
 //! End-to-end tests for Tier 1 features:
 //!   - Pool configuration (PoolConfig, connect_with_config)
 //!   - Raw SQL helpers (raw_execute_sqlite, raw_fetch_all/one/optional_sqlite, sqlite_pool)

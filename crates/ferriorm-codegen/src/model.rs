@@ -20,6 +20,7 @@ use quote::{format_ident, quote};
 use crate::rust_type::{ModuleDepth, filter_type_tokens, rust_type_tokens};
 
 /// Generate the complete module for a single model.
+#[must_use]
 pub fn generate_model_module(model: &Model) -> TokenStream {
     let scalar_fields: Vec<&Field> = model.fields.iter().filter(|f| f.is_scalar()).collect();
 
@@ -64,10 +65,10 @@ fn gen_data_struct(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
             let name = format_ident!("{}", to_snake_case(&f.name));
             let ty = rust_type_tokens(f, ModuleDepth::TopLevel);
             let db_name = &f.db_name;
-            if db_name != &to_snake_case(&f.name) {
-                quote! { #[sqlx(rename = #db_name)] pub #name: #ty }
-            } else {
+            if db_name == &to_snake_case(&f.name) {
                 quote! { pub #name: #ty }
+            } else {
+                quote! { #[sqlx(rename = #db_name)] pub #name: #ty }
             }
         })
         .collect();
@@ -207,8 +208,7 @@ fn collect_db_bounds(scalar_fields: &[&Field]) -> Vec<TokenStream> {
                     );
                 }
             }
-            FieldKind::Enum(_) => {}
-            _ => {}
+            FieldKind::Enum(_) | FieldKind::Model(_) => {}
         }
     }
 
@@ -526,6 +526,7 @@ fn gen_actions(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
 
 // ─── Query Builders with exec() ──────────────────────────────
 
+#[allow(clippy::too_many_lines)]
 fn gen_query_builders(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
     let model_ident = format_ident!("{}", model.name);
     let table_name = &model.db_name;
@@ -540,12 +541,9 @@ fn gen_query_builders(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
     let _aggregate_field = format_ident!("{}AggregateField", model.name);
     let db_bounds = collect_db_bounds(scalar_fields);
 
-    let select_sql = format!(r#"SELECT * FROM "{}" WHERE 1=1"#, table_name);
-    let count_sql = format!(
-        r#"SELECT COUNT(*) as "count" FROM "{}" WHERE 1=1"#,
-        table_name
-    );
-    let delete_sql = format!(r#"DELETE FROM "{}" WHERE 1=1"#, table_name);
+    let select_sql = format!(r#"SELECT * FROM "{table_name}" WHERE 1=1"#);
+    let count_sql = format!(r#"SELECT COUNT(*) as "count" FROM "{table_name}" WHERE 1=1"#);
+    let delete_sql = format!(r#"DELETE FROM "{table_name}" WHERE 1=1"#);
 
     let insert_code = gen_insert_code(model, scalar_fields, table_name);
     let update_code = gen_update_code(model, scalar_fields, table_name);
@@ -941,7 +939,7 @@ fn gen_insert_code(model: &Model, scalar_fields: &[&Field], table_name: &str) ->
         val_pushes.push(quote! { sep.push_bind(chrono::Utc::now()); });
     }
 
-    let insert_start = format!(r#"INSERT INTO "{}""#, table_name);
+    let insert_start = format!(r#"INSERT INTO "{table_name}""#);
 
     // The insert_body macro avoids duplicating the column/value building logic
     // for each database backend. It captures `self` by reference.
@@ -988,8 +986,9 @@ fn gen_default_expr(field: &Field, field_type: &FieldKind) -> TokenStream {
     use ferriorm_core::ast::DefaultValue;
 
     match &field.default {
-        Some(DefaultValue::Uuid) => quote! { uuid::Uuid::new_v4().to_string() },
-        Some(DefaultValue::Cuid) => quote! { uuid::Uuid::new_v4().to_string() }, // fallback
+        Some(DefaultValue::Uuid | DefaultValue::Cuid) => {
+            quote! { uuid::Uuid::new_v4().to_string() }
+        }
         Some(DefaultValue::Now) => quote! { chrono::Utc::now() },
         Some(DefaultValue::AutoIncrement) => quote! { 0i32 }, // DB handles this
         Some(DefaultValue::Literal(lit)) => {
@@ -998,6 +997,7 @@ fn gen_default_expr(field: &Field, field_type: &FieldKind) -> TokenStream {
                 LiteralValue::String(s) => quote! { #s.to_string() },
                 LiteralValue::Int(i) => {
                     // Cast the integer literal to the correct Rust type based on the field's scalar type.
+                    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
                     match field_type {
                         FieldKind::Scalar(ScalarType::Float) => {
                             let val = *i as f64;
@@ -1047,7 +1047,7 @@ fn gen_update_code(model: &Model, scalar_fields: &[&Field], table_name: &str) ->
         .filter(|f| f.is_updated_at)
         .collect();
 
-    let update_start = format!(r#"UPDATE "{}" SET "#, table_name);
+    let update_start = format!(r#"UPDATE "{table_name}" SET "#);
 
     // Generate SET clause arms
     let set_arms: Vec<TokenStream> = updatable
@@ -1129,7 +1129,7 @@ fn gen_update_many_code(_model: &Model, scalar_fields: &[&Field], table_name: &s
         .filter(|f| f.is_updated_at)
         .collect();
 
-    let update_start = format!(r#"UPDATE "{}" SET "#, table_name);
+    let update_start = format!(r#"UPDATE "{table_name}" SET "#);
 
     // Generate SET clause arms
     let set_arms: Vec<TokenStream> = updatable
@@ -1198,12 +1198,13 @@ fn gen_update_many_code(_model: &Model, scalar_fields: &[&Field], table_name: &s
 enum AggregateKind {
     /// Numeric fields: avg, sum, min, max
     Numeric,
-    /// DateTime fields: min, max only
+    /// `DateTime` fields: min, max only
     DateTime,
 }
 
 // ─── UPSERT code generation ──────────────────────────────────
 
+#[allow(clippy::too_many_lines)]
 fn gen_upsert_code(model: &Model, scalar_fields: &[&Field], table_name: &str) -> TokenStream {
     // Collect primary key db_names for ON CONFLICT clause
     let pk_db_names: Vec<String> = model
@@ -1220,7 +1221,7 @@ fn gen_upsert_code(model: &Model, scalar_fields: &[&Field], table_name: &str) ->
         .collect();
     let pk_conflict_cols = pk_db_names
         .iter()
-        .map(|c| format!("\"{}\"", c))
+        .map(|c| format!("\"{c}\""))
         .collect::<Vec<_>>()
         .join(", ");
 
@@ -1302,8 +1303,8 @@ fn gen_upsert_code(model: &Model, scalar_fields: &[&Field], table_name: &str) ->
         })
         .collect();
 
-    let insert_start = format!(r#"INSERT INTO "{}""#, table_name);
-    let conflict_clause = format!(" ON CONFLICT ({}) DO UPDATE SET ", pk_conflict_cols);
+    let insert_start = format!(r#"INSERT INTO "{table_name}""#);
+    let conflict_clause = format!(" ON CONFLICT ({pk_conflict_cols}) DO UPDATE SET ");
     let noop_set = format!(
         r#""{}" = "{}""#,
         pk_db_names.first().unwrap_or(&"id".to_string()),
@@ -1359,6 +1360,7 @@ fn gen_upsert_code(model: &Model, scalar_fields: &[&Field], table_name: &str) ->
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn gen_aggregate_types(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
     let aggregate_field_name = format_ident!("{}AggregateField", model.name);
     let aggregate_result_name = format_ident!("{}AggregateResult", model.name);
@@ -1469,12 +1471,12 @@ fn gen_aggregate_types(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
             AggregateKind::DateTime => vec!["min", "max"],
         };
         for prefix in prefixes {
-            let alias_str = format!("{}_{}", prefix, snake);
+            let alias_str = format!("{prefix}_{snake}");
             alias_arms.push(quote! { (#prefix, Self::#variant) => #alias_str });
         }
     }
 
-    let agg_select_base = format!(r#"SELECT {{}} FROM "{}" WHERE 1=1"#, table_name);
+    let agg_select_base = format!(r#"SELECT {{}} FROM "{table_name}" WHERE 1=1"#);
 
     quote! {
         #[derive(Debug, Clone, Copy)]
@@ -1571,6 +1573,7 @@ fn gen_aggregate_types(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
 
 // ─── Select Types ─────────────────────────────────────────────
 
+#[allow(clippy::too_many_lines)]
 fn gen_select_types(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
     let select_name = format_ident!("{}Select", model.name);
     let partial_name = format_ident!("{}Partial", model.name);
@@ -1603,10 +1606,10 @@ fn gen_select_types(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
                 },
                 ModuleDepth::TopLevel,
             );
-            let rename = if db_name != &to_snake_case(&f.name) {
-                quote! { #[sqlx(rename = #db_name)] }
-            } else {
+            let rename = if db_name == &to_snake_case(&f.name) {
                 quote! {}
+            } else {
+                quote! { #[sqlx(rename = #db_name)] }
             };
             // Always wrap in Option<T>, regardless of whether field was originally optional
             quote! { #[sqlx(default)] #rename pub #name: Option<#base_ty> }
@@ -1619,14 +1622,14 @@ fn gen_select_types(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
         .map(|f| {
             let name = format_ident!("{}", to_snake_case(&f.name));
             let db_name = &f.db_name;
-            let col_expr = format!(r#""{}""#, db_name);
+            let col_expr = format!(r#""{db_name}""#);
             quote! {
                 if select.#name { cols.push(#col_expr); }
             }
         })
         .collect();
 
-    let select_sql_prefix = format!(r#"SELECT {{}} FROM "{}" WHERE 1=1"#, table_name);
+    let select_sql_prefix = format!(r#"SELECT {{}} FROM "{table_name}" WHERE 1=1"#);
 
     quote! {
         #[derive(Debug, Clone, Default)]

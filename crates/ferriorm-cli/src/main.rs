@@ -1,3 +1,5 @@
+#![allow(clippy::pedantic)]
+
 //! CLI tool for the ferriorm ORM.
 //!
 //! Provides commands for initializing projects, generating the Rust client,

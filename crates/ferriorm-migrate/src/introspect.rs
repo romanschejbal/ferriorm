@@ -2,12 +2,15 @@
 //! into the [`Schema`] IR.
 //!
 //! This is the foundation for both shadow database diffing and the `ferriorm db pull`
-//! command. For PostgreSQL, it queries `information_schema` and `pg_catalog`.
-//! For SQLite, it uses `PRAGMA table_info`, `PRAGMA foreign_key_list`, and
+//! command. For `PostgreSQL`, it queries `information_schema` and `pg_catalog`.
+//! For `SQLite`, it uses `PRAGMA table_info`, `PRAGMA foreign_key_list`, and
 //! `PRAGMA index_list`.
 
 use ferriorm_core::ast::{DefaultValue, LiteralValue, ReferentialAction};
-use ferriorm_core::schema::*;
+use ferriorm_core::schema::{
+    DatasourceConfig, Enum, Field, FieldKind, Index, Model, PrimaryKey, RelationType,
+    ResolvedRelation, Schema,
+};
 use ferriorm_core::types::{DatabaseProvider, ScalarType};
 use ferriorm_core::utils::{to_camel_case, to_pascal_case};
 
@@ -17,7 +20,11 @@ use sqlx::PgPool;
 #[cfg(feature = "sqlite")]
 use sqlx::SqlitePool;
 
-/// Introspect a PostgreSQL database and produce a Schema IR.
+/// Introspect a `PostgreSQL` database and produce a Schema IR.
+///
+/// # Errors
+///
+/// Returns a [`sqlx::Error`] if the database queries fail.
 #[cfg(feature = "postgres")]
 pub async fn introspect_postgres(pool: &PgPool, schema_name: &str) -> Result<Schema, sqlx::Error> {
     let enums = introspect_enums(pool, schema_name).await?;
@@ -45,14 +52,14 @@ struct PgEnum {
 #[cfg(feature = "postgres")]
 async fn introspect_enums(pool: &PgPool, schema_name: &str) -> Result<Vec<Enum>, sqlx::Error> {
     let rows = sqlx::query_as::<_, PgEnum>(
-        r#"
+        r"
         SELECT t.typname, e.enumlabel
         FROM pg_type t
         JOIN pg_enum e ON t.oid = e.enumtypid
         JOIN pg_namespace n ON t.typnamespace = n.oid
         WHERE n.nspname = $1
         ORDER BY t.typname, e.enumsortorder
-        "#,
+        ",
     )
     .bind(schema_name)
     .fetch_all(pool)
@@ -122,6 +129,7 @@ struct PgIndex {
 }
 
 #[cfg(feature = "postgres")]
+#[allow(clippy::too_many_lines)]
 async fn introspect_tables(
     pool: &PgPool,
     schema_name: &str,
@@ -129,13 +137,13 @@ async fn introspect_tables(
 ) -> Result<Vec<Model>, sqlx::Error> {
     // Get all columns
     let columns = sqlx::query_as::<_, PgColumn>(
-        r#"
+        r"
         SELECT table_name, column_name, data_type, udt_name, is_nullable, column_default
         FROM information_schema.columns
         WHERE table_schema = $1
           AND table_name NOT LIKE '\_%'
         ORDER BY table_name, ordinal_position
-        "#,
+        ",
     )
     .bind(schema_name)
     .fetch_all(pool)
@@ -143,7 +151,7 @@ async fn introspect_tables(
 
     // Get primary keys and unique constraints
     let constraints = sqlx::query_as::<_, PgConstraint>(
-        r#"
+        r"
         SELECT tc.table_name, tc.constraint_name, tc.constraint_type, kcu.column_name
         FROM information_schema.table_constraints tc
         JOIN information_schema.key_column_usage kcu
@@ -152,7 +160,7 @@ async fn introspect_tables(
         WHERE tc.table_schema = $1
           AND tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE')
         ORDER BY tc.table_name, kcu.ordinal_position
-        "#,
+        ",
     )
     .bind(schema_name)
     .fetch_all(pool)
@@ -160,7 +168,7 @@ async fn introspect_tables(
 
     // Get foreign keys
     let foreign_keys = sqlx::query_as::<_, PgForeignKey>(
-        r#"
+        r"
         SELECT
             kcu.table_name,
             kcu.column_name,
@@ -176,7 +184,7 @@ async fn introspect_tables(
             ON rc.unique_constraint_name = ccu.constraint_name
             AND rc.unique_constraint_schema = ccu.constraint_schema
         WHERE kcu.table_schema = $1
-        "#,
+        ",
     )
     .bind(schema_name)
     .fetch_all(pool)
@@ -184,13 +192,13 @@ async fn introspect_tables(
 
     // Get indexes
     let indexes = sqlx::query_as::<_, PgIndex>(
-        r#"
+        r"
         SELECT tablename, indexname, indexdef
         FROM pg_indexes
         WHERE schemaname = $1
           AND indexname NOT LIKE '%_pkey'
           AND indexname NOT LIKE '%_key'
-        "#,
+        ",
     )
     .bind(schema_name)
     .fetch_all(pool)
@@ -380,11 +388,15 @@ fn parse_index_columns(indexdef: &str) -> Vec<String> {
 
 // ─── SQLite introspection ──────────────────────────────────────────
 
-/// Introspect a SQLite database and produce a Schema IR.
+/// Introspect a `SQLite` database and produce a Schema IR.
 ///
-/// SQLite has no real enum types — all "enum" columns are just TEXT.
-/// Foreign keys are read via PRAGMA foreign_key_list.
-/// Indexes are read via PRAGMA index_list + PRAGMA index_info.
+/// `SQLite` has no real enum types -- all "enum" columns are just TEXT.
+/// Foreign keys are read via `PRAGMA foreign_key_list`.
+/// Indexes are read via `PRAGMA index_list` + `PRAGMA index_info`.
+///
+/// # Errors
+///
+/// Returns a [`sqlx::Error`] if the database queries fail.
 #[cfg(feature = "sqlite")]
 pub async fn introspect_sqlite(pool: &SqlitePool) -> Result<Schema, sqlx::Error> {
     let tables = introspect_sqlite_tables(pool).await?;
@@ -401,14 +413,14 @@ pub async fn introspect_sqlite(pool: &SqlitePool) -> Result<Schema, sqlx::Error>
     })
 }
 
-/// Row from sqlite_master for tables.
+/// Row from `sqlite_master` for tables.
 #[cfg(feature = "sqlite")]
 #[derive(sqlx::FromRow)]
 struct SqliteTable {
     name: String,
 }
 
-/// Row from PRAGMA table_info(table_name).
+/// Row from PRAGMA `table_info(table_name)`.
 #[cfg(feature = "sqlite")]
 #[derive(sqlx::FromRow)]
 struct SqliteColumnInfo {
@@ -420,7 +432,7 @@ struct SqliteColumnInfo {
     pk: i32,
 }
 
-/// Row from PRAGMA foreign_key_list(table_name).
+/// Row from PRAGMA `foreign_key_list(table_name)`.
 #[cfg(feature = "sqlite")]
 #[derive(sqlx::FromRow)]
 struct SqliteForeignKey {
@@ -431,7 +443,7 @@ struct SqliteForeignKey {
     on_update: String,
 }
 
-/// Row from PRAGMA index_list(table_name).
+/// Row from PRAGMA `index_list(table_name)`.
 #[cfg(feature = "sqlite")]
 #[derive(sqlx::FromRow)]
 struct SqliteIndexListEntry {
@@ -440,7 +452,7 @@ struct SqliteIndexListEntry {
     origin: String,
 }
 
-/// Row from PRAGMA index_info(index_name).
+/// Row from PRAGMA `index_info(index_name)`.
 #[cfg(feature = "sqlite")]
 #[derive(sqlx::FromRow)]
 struct SqliteIndexInfo {
@@ -448,6 +460,7 @@ struct SqliteIndexInfo {
 }
 
 #[cfg(feature = "sqlite")]
+#[allow(clippy::too_many_lines)]
 async fn introspect_sqlite_tables(pool: &SqlitePool) -> Result<Vec<Model>, sqlx::Error> {
     // List all user tables (exclude internal sqlite_ tables and _ferriorm_ tables)
     let tables = sqlx::query_as::<_, SqliteTable>(
@@ -462,25 +475,21 @@ async fn introspect_sqlite_tables(pool: &SqlitePool) -> Result<Vec<Model>, sqlx:
         let table_name = &table.name;
 
         // Get column info
-        let columns = sqlx::query_as::<_, SqliteColumnInfo>(&format!(
-            "PRAGMA table_info(\"{}\")",
-            table_name
-        ))
-        .fetch_all(pool)
-        .await?;
+        let columns =
+            sqlx::query_as::<_, SqliteColumnInfo>(&format!("PRAGMA table_info(\"{table_name}\")"))
+                .fetch_all(pool)
+                .await?;
 
         // Get foreign keys
         let foreign_keys = sqlx::query_as::<_, SqliteForeignKey>(&format!(
-            "PRAGMA foreign_key_list(\"{}\")",
-            table_name
+            "PRAGMA foreign_key_list(\"{table_name}\")"
         ))
         .fetch_all(pool)
         .await?;
 
         // Get indexes
         let index_list = sqlx::query_as::<_, SqliteIndexListEntry>(&format!(
-            "PRAGMA index_list(\"{}\")",
-            table_name
+            "PRAGMA index_list(\"{table_name}\")"
         ))
         .fetch_all(pool)
         .await?;

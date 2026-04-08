@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 //! Schema parser for `.ferriorm` files.
 //!
 //! This crate turns a `.ferriorm` schema string into a fully validated
@@ -25,6 +27,10 @@ pub use parser::parse;
 pub use validator::validate;
 
 /// Parse and validate a schema file in one step.
+///
+/// # Errors
+///
+/// Returns a [`ParseError`](error::ParseError) if the source fails parsing or validation.
 pub fn parse_and_validate(
     source: &str,
 ) -> Result<ferriorm_core::schema::Schema, error::ParseError> {

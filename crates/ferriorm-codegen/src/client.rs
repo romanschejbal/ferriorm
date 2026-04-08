@@ -10,7 +10,8 @@ use ferriorm_core::utils::to_snake_case;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-/// Generate the `client.rs` module with the FerriormClient struct.
+/// Generate the `client.rs` module with the `FerriormClient` struct.
+#[must_use]
 pub fn generate_client_module(schema: &Schema) -> TokenStream {
     let model_accessors: Vec<TokenStream> = schema
         .models

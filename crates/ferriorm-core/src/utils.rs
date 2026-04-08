@@ -4,7 +4,13 @@
 //! converting between naming conventions (e.g., model names to table names,
 //! column names to Rust field names).
 
-/// Convert PascalCase or camelCase to snake_case.
+/// Convert `PascalCase` or `camelCase` to `snake_case`.
+///
+/// # Panics
+///
+/// Panics if a character's lowercase conversion produces no characters,
+/// which cannot happen for valid Unicode.
+#[must_use]
 pub fn to_snake_case(s: &str) -> String {
     let mut result = String::new();
     for (i, c) in s.chars().enumerate() {
@@ -16,7 +22,13 @@ pub fn to_snake_case(s: &str) -> String {
     result
 }
 
-/// Convert snake_case to PascalCase.
+/// Convert `snake_case` to `PascalCase`.
+///
+/// # Panics
+///
+/// Panics if a character's uppercase conversion produces no characters,
+/// which cannot happen for valid Unicode.
+#[must_use]
 pub fn to_pascal_case(s: &str) -> String {
     let mut result = String::new();
     let mut capitalize_next = true;
@@ -33,7 +45,8 @@ pub fn to_pascal_case(s: &str) -> String {
     result
 }
 
-/// Convert snake_case to camelCase.
+/// Convert `snake_case` to `camelCase`.
+#[must_use]
 pub fn to_camel_case(s: &str) -> String {
     let pascal = to_pascal_case(s);
     let mut chars = pascal.chars();

@@ -17,6 +17,10 @@ use crate::formatter::format_token_stream;
 use crate::model::generate_model_module;
 
 /// Generate all Rust source files from a validated schema.
+///
+/// # Errors
+///
+/// Returns a [`GenerateError`] if writing any output file fails.
 pub fn generate(schema: &Schema, output_dir: &Path) -> Result<(), GenerateError> {
     // Ensure output directory exists
     fs::create_dir_all(output_dir)

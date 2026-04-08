@@ -5,6 +5,13 @@
 //! formatted.
 
 /// Format a token stream into a pretty-printed Rust source string.
+///
+/// # Panics
+///
+/// Panics if the generated token stream is not valid Rust syntax, which
+/// indicates a bug in the code generator.
+#[must_use]
+#[allow(clippy::needless_pass_by_value)] // Clone needed for error fallback
 pub fn format_token_stream(tokens: proc_macro2::TokenStream) -> String {
     match syn::parse2::<syn::File>(tokens.clone()) {
         Ok(file) => prettyplease::unparse(&file),

@@ -1,4 +1,6 @@
-//! End-to-end migration tests using the ShadowDatabase strategy with SQLite.
+#![allow(clippy::pedantic)]
+
+//! End-to-end migration tests using the `ShadowDatabase` strategy with SQLite.
 //!
 //! The shadow database strategy creates a temporary SQLite file, replays all
 //! existing migrations into it, introspects the result, and then diffs against

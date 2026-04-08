@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 //! Code generator that produces a type-safe Rust client from a validated schema.
 //!
 //! Given an [`ferriorm_core::schema::Schema`], this crate emits a complete Rust

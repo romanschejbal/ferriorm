@@ -22,6 +22,10 @@ use crate::error::FerriormError;
 ///     Ok((value, tx))
 /// }).await?;
 /// ```
+///
+/// # Errors
+///
+/// Returns a [`FerriormError`] if the transaction fails or the closure returns an error.
 pub async fn run_transaction<F, Fut, T>(client: &DatabaseClient, f: F) -> Result<T, FerriormError>
 where
     F: FnOnce(TransactionClient) -> Fut,
@@ -71,6 +75,10 @@ pub enum TransactionClient {
 
 impl TransactionClient {
     /// Commit the transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] if the commit fails.
     pub async fn commit(self) -> Result<(), FerriormError> {
         match self {
             #[cfg(feature = "postgres")]
@@ -81,6 +89,10 @@ impl TransactionClient {
     }
 
     /// Rollback the transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] if the rollback fails.
     pub async fn rollback(self) -> Result<(), FerriormError> {
         match self {
             #[cfg(feature = "postgres")]

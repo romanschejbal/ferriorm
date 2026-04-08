@@ -1,4 +1,4 @@
-//! SQLite SQL renderer for migration steps.
+//! `SQLite` SQL renderer for migration steps.
 //!
 //! Handles SQLite-specific limitations: enums are represented as TEXT columns
 //! (with explanatory comments in the output), `ALTER COLUMN` is not supported
@@ -6,7 +6,7 @@
 //! after table creation. `SERIAL` types are mapped to `INTEGER`.
 
 use super::SqlRenderer;
-use crate::diff::*;
+use crate::diff::{ColumnChanges, ColumnDef, CreateTable, ForeignKeyDef, MigrationStep};
 use std::collections::HashMap;
 
 pub struct SqliteRenderer;
@@ -37,7 +37,7 @@ impl SqlRenderer for SqliteRenderer {
                     // Already rendered inline in the CREATE TABLE.
                 }
                 MigrationStep::CreateTable(ct) => {
-                    let fks = fk_map.get(ct.name.as_str()).map(|v| v.as_slice());
+                    let fks = fk_map.get(ct.name.as_str()).map(std::vec::Vec::as_slice);
                     sql.push_str(&render_create_table(ct, fks));
                     sql.push('\n');
                 }
@@ -164,10 +164,12 @@ fn render_create_table(ct: &CreateTable, fks: Option<&[&ForeignKeyDef]>) -> Stri
         if let Some(fk_list) = fks
             && let Some(fk) = fk_list.iter().find(|fk| fk.column == col.name)
         {
-            sql.push_str(&format!(
+            use std::fmt::Write;
+            let _ = write!(
+                sql,
                 " REFERENCES \"{}\"(\"{}\") ON DELETE {} ON UPDATE {}",
                 fk.referenced_table, fk.referenced_column, fk.on_delete, fk.on_update
-            ));
+            );
         }
     }
 
@@ -206,7 +208,8 @@ fn render_column_def(col: &ColumnDef) -> String {
     if let Some(default) = &col.default
         && !default.is_empty()
     {
-        s.push_str(&format!(" DEFAULT {default}"));
+        use std::fmt::Write;
+        let _ = write!(s, " DEFAULT {default}");
     }
 
     if col.is_unique {
@@ -216,17 +219,19 @@ fn render_column_def(col: &ColumnDef) -> String {
     s
 }
 
-/// SQLite does not support ALTER TABLE ... ALTER COLUMN.
+/// `SQLite` does not support ALTER TABLE ... ALTER COLUMN.
 /// Emit a comment explaining that manual table recreation is needed.
 fn render_alter_column(table: &str, column: &str, changes: &ColumnChanges) -> String {
+    use std::fmt::Write;
     let mut sql = String::new();
-    sql.push_str(&format!(
+    let _ = write!(
+        sql,
         "-- SQLite: ALTER COLUMN is not supported. To alter column \"{column}\" on \"{table}\",\n\
          -- you must recreate the table (CREATE TABLE new -> INSERT INTO new SELECT ... -> DROP TABLE old -> ALTER TABLE new RENAME TO old).\n"
-    ));
+    );
 
     if let Some(new_type) = &changes.sql_type {
-        sql.push_str(&format!("-- Requested change: type -> {new_type}\n"));
+        let _ = writeln!(sql, "-- Requested change: type -> {new_type}");
     }
 
     if let Some(nullable) = changes.nullable {

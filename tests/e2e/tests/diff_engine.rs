@@ -1,3 +1,5 @@
+#![allow(clippy::pedantic)]
+
 //! End-to-end tests for the schema diff engine.
 //!
 //! These tests verify that various schema modifications produce the correct

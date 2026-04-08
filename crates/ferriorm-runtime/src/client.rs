@@ -1,6 +1,6 @@
 //! Database connection pool wrapper.
 //!
-//! [`DatabaseClient`] is an enum that wraps either a PostgreSQL or SQLite
+//! [`DatabaseClient`] is an enum that wraps either a `PostgreSQL` or `SQLite`
 //! connection pool (via sqlx). It provides auto-detection from the connection
 //! URL and exposes typed `fetch_all`, `fetch_optional`, `fetch_one`, and
 //! `execute` helpers used by the generated query builders.
@@ -44,7 +44,7 @@ pub struct PoolConfig {
 
 /// The database client, wrapping an sqlx connection pool.
 ///
-/// Supports PostgreSQL and SQLite via feature flags.
+/// Supports `PostgreSQL` and `SQLite` via feature flags.
 #[derive(Debug, Clone)]
 pub enum DatabaseClient {
     #[cfg(feature = "postgres")]
@@ -54,14 +54,22 @@ pub enum DatabaseClient {
 }
 
 impl DatabaseClient {
-    /// Connect to a PostgreSQL database.
+    /// Connect to a `PostgreSQL` database.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] if the connection fails.
     #[cfg(feature = "postgres")]
     pub async fn connect_postgres(url: &str) -> Result<Self, FerriormError> {
         let pool = sqlx::PgPool::connect(url).await?;
         Ok(Self::Postgres(pool))
     }
 
-    /// Connect to a PostgreSQL database with custom pool configuration.
+    /// Connect to a `PostgreSQL` database with custom pool configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] if the connection fails.
     #[cfg(feature = "postgres")]
     pub async fn connect_postgres_with_config(
         url: &str,
@@ -87,7 +95,11 @@ impl DatabaseClient {
         Ok(Self::Postgres(pool))
     }
 
-    /// Connect to a SQLite database.
+    /// Connect to a `SQLite` database.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] if the connection fails.
     #[cfg(feature = "sqlite")]
     pub async fn connect_sqlite(url: &str) -> Result<Self, FerriormError> {
         let url = normalize_sqlite_url(url);
@@ -95,7 +107,11 @@ impl DatabaseClient {
         Ok(Self::Sqlite(pool))
     }
 
-    /// Connect to a SQLite database with custom pool configuration.
+    /// Connect to a `SQLite` database with custom pool configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] if the connection fails.
     #[cfg(feature = "sqlite")]
     pub async fn connect_sqlite_with_config(
         url: &str,
@@ -123,9 +139,18 @@ impl DatabaseClient {
     }
 
     /// Connect by auto-detecting the database type from the URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] if the connection fails or no backend is enabled.
     pub async fn connect(url: &str) -> Result<Self, FerriormError> {
         #[cfg(feature = "sqlite")]
-        if url.starts_with("sqlite:") || url.starts_with("file:") || url.ends_with(".db") {
+        if url.starts_with("sqlite:")
+            || url.starts_with("file:")
+            || std::path::Path::new(url)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("db"))
+        {
             return Self::connect_sqlite(url).await;
         }
 
@@ -142,12 +167,21 @@ impl DatabaseClient {
 
     /// Connect by auto-detecting the database type from the URL, using custom
     /// pool configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] if the connection fails or no backend is enabled.
     pub async fn connect_with_config(
         url: &str,
         config: &PoolConfig,
     ) -> Result<Self, FerriormError> {
         #[cfg(feature = "sqlite")]
-        if url.starts_with("sqlite:") || url.starts_with("file:") || url.ends_with(".db") {
+        if url.starts_with("sqlite:")
+            || url.starts_with("file:")
+            || std::path::Path::new(url)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("db"))
+        {
             return Self::connect_sqlite_with_config(url, config).await;
         }
 
@@ -162,9 +196,11 @@ impl DatabaseClient {
         ))
     }
 
-    /// Get a reference to the underlying PostgreSQL pool for raw queries.
+    /// Get a reference to the underlying `PostgreSQL` pool for raw queries.
     ///
-    /// Returns an error if this client is not connected to PostgreSQL.
+    /// # Errors
+    ///
+    /// Returns an error if this client is not connected to `PostgreSQL`.
     #[cfg(feature = "postgres")]
     pub fn pg_pool(&self) -> Result<&sqlx::PgPool, FerriormError> {
         match self {
@@ -176,9 +212,11 @@ impl DatabaseClient {
         }
     }
 
-    /// Get a reference to the underlying SQLite pool for raw queries.
+    /// Get a reference to the underlying `SQLite` pool for raw queries.
     ///
-    /// Returns an error if this client is not connected to SQLite.
+    /// # Errors
+    ///
+    /// Returns an error if this client is not connected to `SQLite`.
     #[cfg(feature = "sqlite")]
     pub fn sqlite_pool(&self) -> Result<&sqlx::SqlitePool, FerriormError> {
         match self {
@@ -202,7 +240,11 @@ impl DatabaseClient {
 
     // ── Raw SQL helpers (PostgreSQL) ────────────────────────────────────
 
-    /// Execute raw SQL and return all rows mapped to `T` (PostgreSQL).
+    /// Execute raw SQL and return all rows mapped to `T` (`PostgreSQL`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "postgres")]
     pub async fn raw_fetch_all_pg<T>(&self, sql: &str) -> Result<Vec<T>, FerriormError>
     where
@@ -217,7 +259,11 @@ impl DatabaseClient {
         }
     }
 
-    /// Execute raw SQL and return exactly one row mapped to `T` (PostgreSQL).
+    /// Execute raw SQL and return exactly one row mapped to `T` (`PostgreSQL`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "postgres")]
     pub async fn raw_fetch_one_pg<T>(&self, sql: &str) -> Result<T, FerriormError>
     where
@@ -232,7 +278,11 @@ impl DatabaseClient {
         }
     }
 
-    /// Execute raw SQL and return an optional row mapped to `T` (PostgreSQL).
+    /// Execute raw SQL and return an optional row mapped to `T` (`PostgreSQL`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "postgres")]
     pub async fn raw_fetch_optional_pg<T>(&self, sql: &str) -> Result<Option<T>, FerriormError>
     where
@@ -247,8 +297,12 @@ impl DatabaseClient {
         }
     }
 
-    /// Execute raw SQL without returning rows (PostgreSQL). Returns the
+    /// Execute raw SQL without returning rows (`PostgreSQL`). Returns the
     /// number of rows affected.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "postgres")]
     pub async fn raw_execute_pg(&self, sql: &str) -> Result<u64, FerriormError> {
         match self {
@@ -262,7 +316,11 @@ impl DatabaseClient {
 
     // ── Raw SQL helpers (SQLite) ────────────────────────────────────────
 
-    /// Execute raw SQL and return all rows mapped to `T` (SQLite).
+    /// Execute raw SQL and return all rows mapped to `T` (`SQLite`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "sqlite")]
     pub async fn raw_fetch_all_sqlite<T>(&self, sql: &str) -> Result<Vec<T>, FerriormError>
     where
@@ -275,7 +333,11 @@ impl DatabaseClient {
         }
     }
 
-    /// Execute raw SQL and return exactly one row mapped to `T` (SQLite).
+    /// Execute raw SQL and return exactly one row mapped to `T` (`SQLite`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "sqlite")]
     pub async fn raw_fetch_one_sqlite<T>(&self, sql: &str) -> Result<T, FerriormError>
     where
@@ -288,7 +350,11 @@ impl DatabaseClient {
         }
     }
 
-    /// Execute raw SQL and return an optional row mapped to `T` (SQLite).
+    /// Execute raw SQL and return an optional row mapped to `T` (`SQLite`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "sqlite")]
     pub async fn raw_fetch_optional_sqlite<T>(&self, sql: &str) -> Result<Option<T>, FerriormError>
     where
@@ -301,8 +367,12 @@ impl DatabaseClient {
         }
     }
 
-    /// Execute raw SQL without returning rows (SQLite). Returns the number
+    /// Execute raw SQL without returning rows (`SQLite`). Returns the number
     /// of rows affected.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "sqlite")]
     pub async fn raw_execute_sqlite(&self, sql: &str) -> Result<u64, FerriormError> {
         match self {
@@ -313,6 +383,10 @@ impl DatabaseClient {
     }
 
     /// Execute a query builder against the appropriate pool, returning all rows.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "postgres")]
     pub async fn fetch_all_pg<'q, T>(
         &self,
@@ -330,6 +404,11 @@ impl DatabaseClient {
         }
     }
 
+    /// Fetch an optional row via a `PostgreSQL` query builder.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "postgres")]
     pub async fn fetch_optional_pg<'q, T>(
         &self,
@@ -347,6 +426,11 @@ impl DatabaseClient {
         }
     }
 
+    /// Fetch exactly one row via a `PostgreSQL` query builder.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "postgres")]
     pub async fn fetch_one_pg<'q, T>(
         &self,
@@ -364,10 +448,15 @@ impl DatabaseClient {
         }
     }
 
+    /// Execute a `PostgreSQL` query builder without returning rows.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "postgres")]
-    pub async fn execute_pg<'q>(
+    pub async fn execute_pg(
         &self,
-        mut qb: sqlx::QueryBuilder<'q, sqlx::Postgres>,
+        mut qb: sqlx::QueryBuilder<'_, sqlx::Postgres>,
     ) -> Result<u64, FerriormError> {
         match self {
             Self::Postgres(pool) => Ok(qb.build().execute(pool).await?.rows_affected()),
@@ -379,6 +468,12 @@ impl DatabaseClient {
     }
 
     // SQLite variants
+
+    /// Execute a query builder against the `SQLite` pool, returning all rows.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "sqlite")]
     pub async fn fetch_all_sqlite<'q, T>(
         &self,
@@ -394,6 +489,11 @@ impl DatabaseClient {
         }
     }
 
+    /// Fetch an optional row via a `SQLite` query builder.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "sqlite")]
     pub async fn fetch_optional_sqlite<'q, T>(
         &self,
@@ -409,6 +509,11 @@ impl DatabaseClient {
         }
     }
 
+    /// Fetch exactly one row via a `SQLite` query builder.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "sqlite")]
     pub async fn fetch_one_sqlite<'q, T>(
         &self,
@@ -424,10 +529,15 @@ impl DatabaseClient {
         }
     }
 
+    /// Execute a `SQLite` query builder without returning rows.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`FerriormError`] on query failure or wrong connection type.
     #[cfg(feature = "sqlite")]
-    pub async fn execute_sqlite<'q>(
+    pub async fn execute_sqlite(
         &self,
-        mut qb: sqlx::QueryBuilder<'q, sqlx::Sqlite>,
+        mut qb: sqlx::QueryBuilder<'_, sqlx::Sqlite>,
     ) -> Result<u64, FerriormError> {
         match self {
             Self::Sqlite(pool) => Ok(qb.build().execute(pool).await?.rows_affected()),
@@ -437,28 +547,27 @@ impl DatabaseClient {
     }
 }
 
-/// Normalize a SQLite connection URL for sqlx.
+/// Normalize a `SQLite` connection URL for sqlx.
 ///
 /// Converts `file:` prefixed URLs (e.g. `file:./dev.db`) to the `sqlite:`
 /// scheme that sqlx expects, and appends `?mode=rwc` so the database file
 /// is auto-created if it does not exist.
 #[cfg(feature = "sqlite")]
+#[must_use]
 pub fn normalize_sqlite_url(url: &str) -> String {
     let url = if let Some(path) = url.strip_prefix("file:") {
-        format!("sqlite:{}", path)
+        format!("sqlite:{path}")
     } else if !url.starts_with("sqlite:") {
-        format!("sqlite:{}", url)
+        format!("sqlite:{url}")
     } else {
         url.to_string()
     };
     // Ensure mode=rwc for auto-creation
-    if !url.contains("mode=") {
-        if url.contains('?') {
-            format!("{}&mode=rwc", url)
-        } else {
-            format!("{}?mode=rwc", url)
-        }
-    } else {
+    if url.contains("mode=") {
         url
+    } else if url.contains('?') {
+        format!("{url}&mode=rwc")
+    } else {
+        format!("{url}?mode=rwc")
     }
 }
