@@ -9,7 +9,11 @@ mod commands;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "ferriorm", about = "Prisma-like ORM for Rust", version)]
+#[command(
+    name = "ferriorm",
+    about = "Prisma-like ORM for Rust\n\nDocs: https://romanschejbal.github.io/ferriorm",
+    version
+)]
 struct Cli {
     /// Path to the schema file
     #[arg(long, default_value = "schema.ferriorm")]
