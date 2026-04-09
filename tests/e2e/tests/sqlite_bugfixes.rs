@@ -433,3 +433,91 @@ fn normalize_sqlite_url_file_with_nested_path() {
         "Should include mode=rwc. Got: {result}"
     );
 }
+
+// ─── Issue 5 verification: SQLite CURRENT_TIMESTAMP roundtrips with chrono::DateTime<Utc> ──
+
+#[derive(sqlx::FromRow, Debug)]
+struct ChronoRow {
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[tokio::test]
+async fn sqlite_current_timestamp_default_roundtrips_with_chrono_utc() {
+    use sqlx::SqlitePool;
+
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+
+    // Create table with DEFAULT CURRENT_TIMESTAMP (mirrors what diff engine emits for @default(now()) on SQLite)
+    sqlx::query(
+        r#"CREATE TABLE "events" (
+            "id" INTEGER PRIMARY KEY,
+            "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )"#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Insert without providing created_at — SQLite fills it via DEFAULT
+    sqlx::query(r#"INSERT INTO "events" ("id") VALUES (1)"#)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Read back as chrono::DateTime<Utc>
+    let row: Result<ChronoRow, sqlx::Error> =
+        sqlx::query_as(r#"SELECT "created_at" FROM "events" WHERE "id" = 1"#)
+            .fetch_one(&pool)
+            .await;
+
+    assert!(
+        row.is_ok(),
+        "SQLite CURRENT_TIMESTAMP should roundtrip to chrono::DateTime<Utc>. Got: {:?}",
+        row.err()
+    );
+
+    let row = row.unwrap();
+    let now = chrono::Utc::now();
+    let diff = (now - row.created_at).num_seconds().abs();
+    assert!(
+        diff < 5,
+        "CURRENT_TIMESTAMP should be close to now. Diff: {diff}s, parsed: {:?}",
+        row.created_at
+    );
+}
+
+#[tokio::test]
+async fn sqlite_chrono_now_inserted_via_app_roundtrips() {
+    use sqlx::SqlitePool;
+
+    // This mirrors what generated codegen does: chrono::Utc::now() is inserted via push_bind
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    sqlx::query(
+        r#"CREATE TABLE "events" (
+            "id" INTEGER PRIMARY KEY,
+            "created_at" TEXT NOT NULL
+        )"#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let inserted = chrono::Utc::now();
+    sqlx::query(r#"INSERT INTO "events" ("id", "created_at") VALUES (?, ?)"#)
+        .bind(1i64)
+        .bind(inserted)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let row: ChronoRow = sqlx::query_as(r#"SELECT "created_at" FROM "events" WHERE "id" = 1"#)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let diff = (inserted - row.created_at).num_milliseconds().abs();
+    assert!(
+        diff < 100,
+        "App-inserted timestamp should roundtrip cleanly. Diff: {diff}ms"
+    );
+}

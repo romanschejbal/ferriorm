@@ -11,8 +11,9 @@ ferriorm-codegen = { path = "../../crates/ferriorm-codegen" }
 ferriorm-migrate = { path = "../../crates/ferriorm-migrate", default-features = false, features = ["sqlite"] }
 ferriorm-runtime = { path = "../../crates/ferriorm-runtime", default-features = false, features = ["sqlite"] }
 
-sqlx = { workspace = true, features = ["sqlite"] }
+sqlx = { workspace = true, features = ["sqlite", "chrono"] }
 tokio = { workspace = true }
 syn = { workspace = true }
 tempfile = "3"
 serde_json = { workspace = true }
+chrono = { workspace = true }

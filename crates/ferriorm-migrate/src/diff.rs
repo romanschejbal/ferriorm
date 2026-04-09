@@ -5,7 +5,7 @@
 //! list of [`MigrationStep`]s (create table, add column, alter column, etc.).
 //! These steps are then rendered into SQL by the [`super::sql`] module.
 
-use ferriorm_core::schema::{Enum, Field, FieldKind, Index, Model, Schema};
+use ferriorm_core::schema::{Enum, Field, FieldKind, Model, Schema};
 use ferriorm_core::utils::to_snake_case;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -477,7 +477,7 @@ fn diff_indexes(from: &[Model], to: &[Model], steps: &mut Vec<MigrationStep>) {
 }
 
 /// Resolve a list of field names (schema names) to database column names by
-/// looking them up in the model. Falls back to snake_case if a field isn't found.
+/// looking them up in the model. Falls back to `snake_case` if a field isn't found.
 fn resolve_index_columns(field_names: &[String], model: &Model) -> Vec<String> {
     field_names
         .iter()
