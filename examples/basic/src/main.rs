@@ -35,6 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             author_id: user.id.clone(),
             published: Some(true),
             status: Some(generated::PostStatus::Published),
+            view_count: None,
             id: None,
             created_at: None,
         })

@@ -108,8 +108,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### Generated Client
 - Full CRUD: `create`, `find_unique`, `find_first`, `find_many`, `update`, `delete`, `upsert`
+- Dedup-on-write: `create().on_conflict_ignore()` → `Option<T>`
+- Race-safe updates: `update_first(WhereInput, data)` for compare-and-swap transitions
 - Batch operations: `create_many`, `update_many`, `delete_many`
 - Type-safe filters: `equals`, `not`, `contains`, `starts_with`, `gt`, `lt`, `in`, `AND`, `OR`, `NOT`
+- Nullable filters with `IS NULL` / `IS NOT NULL` for every scalar type
+- Compound `@@unique([...])` keys materialize as `WhereUniqueInput` variants (usable by `upsert` as `ON CONFLICT` targets)
 - Ordering, pagination (`skip`/`take`), counting
 - Relation loading via `include()` with batched queries (no N+1)
 

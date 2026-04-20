@@ -29,7 +29,9 @@ impl FerriormClient {
     /// Get a reference to the underlying [`DatabaseClient`].
     ///
     /// Use this for raw SQL queries via `client().pg_pool()` or
-    /// `client().sqlite_pool()`.
+    /// `client().sqlite_pool()` — the escape hatch for joins,
+    /// aggregates, CTEs, compound conflict targets, or anything
+    /// the generated client can't express.
     pub fn client(&self) -> &DatabaseClient {
         &self.inner
     }

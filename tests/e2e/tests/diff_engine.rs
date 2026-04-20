@@ -68,6 +68,7 @@ fn make_field(name: &str, scalar: ScalarType, is_id: bool) -> Field {
         is_updated_at: false,
         default: None,
         relation: None,
+        db_type: None,
     }
 }
 
@@ -83,6 +84,7 @@ fn make_optional_field(name: &str, scalar: ScalarType) -> Field {
         is_updated_at: false,
         default: None,
         relation: None,
+        db_type: None,
     }
 }
 
@@ -98,6 +100,7 @@ fn make_unique_field(name: &str, scalar: ScalarType) -> Field {
         is_updated_at: false,
         default: None,
         relation: None,
+        db_type: None,
     }
 }
 
@@ -113,6 +116,7 @@ fn make_field_with_default(name: &str, scalar: ScalarType, default: DefaultValue
         is_updated_at: false,
         default: Some(default),
         relation: None,
+        db_type: None,
     }
 }
 
@@ -128,6 +132,7 @@ fn make_enum_field(name: &str, enum_name: &str) -> Field {
         is_updated_at: false,
         default: None,
         relation: None,
+        db_type: None,
     }
 }
 
@@ -156,6 +161,7 @@ fn make_fk_field(
             on_delete: ReferentialAction::Cascade,
             on_update: ReferentialAction::NoAction,
         }),
+        db_type: None,
     }
 }
 
@@ -1052,4 +1058,72 @@ model Post {
     assert!(sql.contains("CREATE TABLE \"posts\""));
     assert!(sql.contains("ALTER TABLE \"users\" ADD COLUMN \"name\" TEXT"));
     assert!(sql.contains("ALTER TABLE \"users\" ADD COLUMN \"role\" TEXT"));
+}
+
+#[test]
+fn diff_respects_db_bigint_hint_for_postgres() {
+    use ferriorm_migrate::sql;
+
+    let mut int_field = make_field("viewCount", ScalarType::Int, false);
+    int_field.db_type = Some(("BigInt".into(), vec![]));
+
+    let model = make_model(
+        "Post",
+        "posts",
+        vec![make_field("id", ScalarType::String, true), int_field],
+    );
+
+    let from = empty_schema();
+    let to = make_schema(vec![model], vec![]);
+
+    let steps = diff::diff_schemas(&from, &to, DatabaseProvider::PostgreSQL);
+    let pg_sql = sql::renderer_for(DatabaseProvider::PostgreSQL).render(&steps);
+    assert!(
+        pg_sql.contains("\"view_count\" BIGINT"),
+        "expected BIGINT column for @db.BigInt, got:\n{pg_sql}"
+    );
+    assert!(
+        !pg_sql.contains("\"view_count\" INTEGER"),
+        "should not fall back to INTEGER when @db.BigInt is set"
+    );
+}
+
+#[test]
+fn diff_emits_compound_unique_and_renders_sqlite() {
+    use ferriorm_core::schema::UniqueConstraint;
+
+    let mut model = make_model(
+        "Subscription",
+        "subscriptions",
+        vec![
+            make_field("id", ScalarType::String, true),
+            make_field("userId", ScalarType::Int, false),
+            make_field("channel", ScalarType::String, false),
+        ],
+    );
+    model.unique_constraints.push(UniqueConstraint {
+        fields: vec!["userId".into(), "channel".into()],
+    });
+
+    let from = empty_schema();
+    let to = make_schema(vec![model], vec![]);
+
+    let steps = diff::diff_schemas(&from, &to, DatabaseProvider::SQLite);
+    let has_add_uc = steps.iter().any(|s| {
+        matches!(s, MigrationStep::AddUniqueConstraint { table, columns, .. }
+            if table == "subscriptions"
+            && columns == &vec!["user_id".to_string(), "channel".to_string()])
+    });
+    assert!(
+        has_add_uc,
+        "diff should emit AddUniqueConstraint for @@unique. Steps: {steps:?}"
+    );
+
+    let sql = render_sqlite(&steps);
+    assert!(
+        sql.contains(
+            "CREATE UNIQUE INDEX \"uq_subscriptions_user_id_channel\" ON \"subscriptions\" (\"user_id\", \"channel\")"
+        ),
+        "expected unique index in rendered SQL, got:\n{sql}"
+    );
 }

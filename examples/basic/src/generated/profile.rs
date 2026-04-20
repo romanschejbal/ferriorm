@@ -8,17 +8,18 @@
     clippy::pedantic,
     clippy::nursery
 )]
-use ferriorm_runtime::prelude::chrono;
-use ferriorm_runtime::prelude::sqlx;
-use ferriorm_runtime::prelude::uuid;
-use ferriorm_runtime::prelude::*;
 use serde::{Deserialize, Serialize};
+use ferriorm_runtime::prelude::*;
+use ferriorm_runtime::prelude::sqlx;
+use ferriorm_runtime::prelude::chrono;
+use ferriorm_runtime::prelude::uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 #[sqlx(rename_all = "snake_case")]
 pub struct Profile {
     pub id: String,
     pub bio: Option<String>,
     pub avatar: Option<String>,
+    pub disconnected_at: Option<chrono::DateTime<chrono::Utc>>,
     pub user_id: String,
 }
 impl Profile {
@@ -31,6 +32,7 @@ pub mod filter {
         pub id: Option<ferriorm_runtime::filter::StringFilter>,
         pub bio: Option<ferriorm_runtime::filter::NullableStringFilter>,
         pub avatar: Option<ferriorm_runtime::filter::NullableStringFilter>,
+        pub disconnected_at: Option<ferriorm_runtime::filter::NullableDateTimeFilter>,
         pub user_id: Option<ferriorm_runtime::filter::StringFilter>,
         pub and: Option<Vec<ProfileWhereInput>>,
         pub or: Option<Vec<ProfileWhereInput>>,
@@ -45,10 +47,15 @@ pub mod filter {
         pub(crate) fn build_where<'args, DB: sqlx::Database>(
             &self,
             qb: &mut sqlx::QueryBuilder<'args, DB>,
-        ) where
+        )
+        where
             i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            Option<
+                chrono::DateTime<chrono::Utc>,
+            >: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         {
             if let Some(filter) = &self.id {
                 if let Some(v) = &filter.equals {
@@ -74,12 +81,26 @@ pub mod filter {
             }
             if let Some(filter) = &self.bio {
                 if let Some(v) = &filter.equals {
-                    qb.push(concat!(" AND \"", "bio", "\" = "));
-                    qb.push_bind(v.clone());
+                    match v {
+                        None => {
+                            qb.push(concat!(" AND \"", "bio", "\" IS NULL"));
+                        }
+                        Some(inner) => {
+                            qb.push(concat!(" AND \"", "bio", "\" = "));
+                            qb.push_bind(inner.clone());
+                        }
+                    }
                 }
                 if let Some(v) = &filter.not {
-                    qb.push(concat!(" AND \"", "bio", "\" != "));
-                    qb.push_bind(v.clone());
+                    match v {
+                        None => {
+                            qb.push(concat!(" AND \"", "bio", "\" IS NOT NULL"));
+                        }
+                        Some(inner) => {
+                            qb.push(concat!(" AND \"", "bio", "\" != "));
+                            qb.push_bind(inner.clone());
+                        }
+                    }
                 }
                 if let Some(v) = &filter.contains {
                     qb.push(concat!(" AND \"", "bio", "\" LIKE "));
@@ -96,12 +117,26 @@ pub mod filter {
             }
             if let Some(filter) = &self.avatar {
                 if let Some(v) = &filter.equals {
-                    qb.push(concat!(" AND \"", "avatar", "\" = "));
-                    qb.push_bind(v.clone());
+                    match v {
+                        None => {
+                            qb.push(concat!(" AND \"", "avatar", "\" IS NULL"));
+                        }
+                        Some(inner) => {
+                            qb.push(concat!(" AND \"", "avatar", "\" = "));
+                            qb.push_bind(inner.clone());
+                        }
+                    }
                 }
                 if let Some(v) = &filter.not {
-                    qb.push(concat!(" AND \"", "avatar", "\" != "));
-                    qb.push_bind(v.clone());
+                    match v {
+                        None => {
+                            qb.push(concat!(" AND \"", "avatar", "\" IS NOT NULL"));
+                        }
+                        Some(inner) => {
+                            qb.push(concat!(" AND \"", "avatar", "\" != "));
+                            qb.push_bind(inner.clone());
+                        }
+                    }
                 }
                 if let Some(v) = &filter.contains {
                     qb.push(concat!(" AND \"", "avatar", "\" LIKE "));
@@ -114,6 +149,48 @@ pub mod filter {
                 if let Some(v) = &filter.ends_with {
                     qb.push(concat!(" AND \"", "avatar", "\" LIKE "));
                     qb.push_bind(format!("%{}", v));
+                }
+            }
+            if let Some(filter) = &self.disconnected_at {
+                if let Some(v) = &filter.equals {
+                    match v {
+                        None => {
+                            qb.push(concat!(" AND \"", "disconnected_at", "\" IS NULL"));
+                        }
+                        Some(inner) => {
+                            qb.push(concat!(" AND \"", "disconnected_at", "\" = "));
+                            qb.push_bind(inner.clone());
+                        }
+                    }
+                }
+                if let Some(v) = &filter.not {
+                    match v {
+                        None => {
+                            qb.push(
+                                concat!(" AND \"", "disconnected_at", "\" IS NOT NULL"),
+                            );
+                        }
+                        Some(inner) => {
+                            qb.push(concat!(" AND \"", "disconnected_at", "\" != "));
+                            qb.push_bind(inner.clone());
+                        }
+                    }
+                }
+                if let Some(v) = &filter.gt {
+                    qb.push(concat!(" AND \"", "disconnected_at", "\" > "));
+                    qb.push_bind(v.clone());
+                }
+                if let Some(v) = &filter.gte {
+                    qb.push(concat!(" AND \"", "disconnected_at", "\" >= "));
+                    qb.push_bind(v.clone());
+                }
+                if let Some(v) = &filter.lt {
+                    qb.push(concat!(" AND \"", "disconnected_at", "\" < "));
+                    qb.push_bind(v.clone());
+                }
+                if let Some(v) = &filter.lte {
+                    qb.push(concat!(" AND \"", "disconnected_at", "\" <= "));
+                    qb.push_bind(v.clone());
                 }
             }
             if let Some(filter) = &self.user_id {
@@ -168,10 +245,15 @@ pub mod filter {
         pub(crate) fn build_where<'args, DB: sqlx::Database>(
             &self,
             qb: &mut sqlx::QueryBuilder<'args, DB>,
-        ) where
+        )
+        where
             i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            Option<
+                chrono::DateTime<chrono::Utc>,
+            >: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         {
             match self {
                 Self::Id(v) => {
@@ -185,6 +267,22 @@ pub mod filter {
             }
         }
     }
+    impl ProfileWhereUniqueInput {
+        #[allow(dead_code)]
+        pub(crate) fn conflict_target(&self) -> &'static str {
+            match self {
+                Self::Id(_) => "(\"id\")",
+                Self::UserId(_) => "(\"user_id\")",
+            }
+        }
+        #[allow(dead_code)]
+        pub(crate) fn first_conflict_col(&self) -> &'static str {
+            match self {
+                Self::Id(_) => "\"id\"",
+                Self::UserId(_) => "\"user_id\"",
+            }
+        }
+    }
 }
 pub mod data {
     use ferriorm_runtime::prelude::*;
@@ -192,13 +290,18 @@ pub mod data {
     pub struct ProfileCreateInput {
         pub bio: Option<String>,
         pub avatar: Option<String>,
+        pub disconnected_at: Option<chrono::DateTime<chrono::Utc>>,
         pub user_id: String,
         pub id: Option<String>,
     }
+    /// Update payload. Each field is `Option<SetValue<T>>`:
+    /// `None` leaves the column untouched (omitted from the SET clause),
+    /// `Some(SetValue::Set(v))` writes `v`.
     #[derive(Debug, Clone, Default)]
     pub struct ProfileUpdateInput {
         pub bio: Option<SetValue<Option<String>>>,
         pub avatar: Option<SetValue<Option<String>>>,
+        pub disconnected_at: Option<SetValue<Option<chrono::DateTime<chrono::Utc>>>>,
         pub user_id: Option<SetValue<String>>,
     }
 }
@@ -209,6 +312,7 @@ pub mod order {
         Id(SortOrder),
         Bio(SortOrder),
         Avatar(SortOrder),
+        DisconnectedAt(SortOrder),
         UserId(SortOrder),
     }
     impl ProfileOrderByInput {
@@ -229,6 +333,10 @@ pub mod order {
                     qb.push(concat!("\"", "avatar", "\" "));
                     qb.push(order.as_sql());
                 }
+                Self::DisconnectedAt(order) => {
+                    qb.push(concat!("\"", "disconnected_at", "\" "));
+                    qb.push(order.as_sql());
+                }
                 Self::UserId(order) => {
                     qb.push(concat!("\"", "user_id", "\" "));
                     qb.push(order.as_sql());
@@ -244,7 +352,10 @@ impl<'a> ProfileActions<'a> {
     pub fn new(client: &'a DatabaseClient) -> Self {
         Self { client }
     }
-    pub fn find_unique(&self, r#where: filter::ProfileWhereUniqueInput) -> FindUniqueQuery<'a> {
+    pub fn find_unique(
+        &self,
+        r#where: filter::ProfileWhereUniqueInput,
+    ) -> FindUniqueQuery<'a> {
         FindUniqueQuery {
             client: self.client,
             r#where,
@@ -283,6 +394,20 @@ impl<'a> ProfileActions<'a> {
             data,
         }
     }
+    /// Like [`update`], but accepts a full `WhereInput` so additional
+    /// predicates (e.g., `status = 'pending'`) can be used for
+    /// compare-and-swap updates. Returns `Ok(None)` if no row matched.
+    pub fn update_first(
+        &self,
+        r#where: filter::ProfileWhereInput,
+        data: data::ProfileUpdateInput,
+    ) -> UpdateFirstQuery<'a> {
+        UpdateFirstQuery {
+            client: self.client,
+            r#where,
+            data,
+        }
+    }
     pub fn delete(&self, r#where: filter::ProfileWhereUniqueInput) -> DeleteQuery<'a> {
         DeleteQuery {
             client: self.client,
@@ -295,7 +420,10 @@ impl<'a> ProfileActions<'a> {
             r#where,
         }
     }
-    pub fn create_many(&self, data: Vec<data::ProfileCreateInput>) -> CreateManyQuery<'a> {
+    pub fn create_many(
+        &self,
+        data: Vec<data::ProfileCreateInput>,
+    ) -> CreateManyQuery<'a> {
         CreateManyQuery {
             client: self.client,
             data,
@@ -312,7 +440,10 @@ impl<'a> ProfileActions<'a> {
             data,
         }
     }
-    pub fn delete_many(&self, r#where: filter::ProfileWhereInput) -> DeleteManyQuery<'a> {
+    pub fn delete_many(
+        &self,
+        r#where: filter::ProfileWhereInput,
+    ) -> DeleteManyQuery<'a> {
         DeleteManyQuery {
             client: self.client,
             r#where,
@@ -329,6 +460,13 @@ impl<'a> ProfileActions<'a> {
             r#where,
             create,
             update,
+        }
+    }
+    pub fn aggregate(&self, r#where: filter::ProfileWhereInput) -> AggregateQuery<'a> {
+        AggregateQuery {
+            client: self.client,
+            r#where,
+            ops: vec![],
         }
     }
 }
@@ -357,6 +495,8 @@ where
     i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
     let mut qb = sqlx::QueryBuilder::<DB>::new(base_sql);
     where_input.build_where(&mut qb);
@@ -379,6 +519,8 @@ where
     i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
     let mut qb = sqlx::QueryBuilder::<DB>::new(base_sql);
     where_unique.build_where(&mut qb);
@@ -393,6 +535,8 @@ where
     i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
     let mut qb = sqlx::QueryBuilder::<DB>::new(base_sql);
     where_unique.build_where(&mut qb);
@@ -407,6 +551,8 @@ where
     i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
     let mut qb = sqlx::QueryBuilder::<DB>::new(base_sql);
     where_input.build_where(&mut qb);
@@ -420,6 +566,8 @@ where
     i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
     let mut qb = sqlx::QueryBuilder::<DB>::new(base_sql);
     where_input.build_where(&mut qb);
@@ -440,17 +588,15 @@ impl<'a> FindUniqueQuery<'a> {
     pub async fn exec(self) -> Result<Option<Profile>, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_unique_select_query::<sqlx::Postgres>(
-                    "SELECT * FROM \"profiles\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_unique_select_query::<
+                    sqlx::Postgres,
+                >("SELECT * FROM \"profiles\" WHERE 1=1", &self.r#where);
                 self.client.fetch_optional_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_unique_select_query::<sqlx::Sqlite>(
-                    "SELECT * FROM \"profiles\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_unique_select_query::<
+                    sqlx::Sqlite,
+                >("SELECT * FROM \"profiles\" WHERE 1=1", &self.r#where);
                 self.client.fetch_optional_sqlite(qb).await
             }
         }
@@ -477,7 +623,9 @@ impl<'a> FindFirstQuery<'a> {
     pub async fn exec(self) -> Result<Option<Profile>, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_select_query::<sqlx::Postgres>(
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(
                     "SELECT * FROM \"profiles\" WHERE 1=1",
                     &self.r#where,
                     &self.order_by,
@@ -487,7 +635,9 @@ impl<'a> FindFirstQuery<'a> {
                 self.client.fetch_optional_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_select_query::<sqlx::Sqlite>(
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(
                     "SELECT * FROM \"profiles\" WHERE 1=1",
                     &self.r#where,
                     &self.order_by,
@@ -532,7 +682,9 @@ impl<'a> FindManyQuery<'a> {
     pub async fn exec(self) -> Result<Vec<Profile>, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_select_query::<sqlx::Postgres>(
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(
                     "SELECT * FROM \"profiles\" WHERE 1=1",
                     &self.r#where,
                     &self.order_by,
@@ -542,7 +694,9 @@ impl<'a> FindManyQuery<'a> {
                 self.client.fetch_all_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_select_query::<sqlx::Sqlite>(
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(
                     "SELECT * FROM \"profiles\" WHERE 1=1",
                     &self.r#where,
                     &self.order_by,
@@ -562,37 +716,19 @@ impl<'a> CreateQuery<'a> {
     pub async fn exec(self) -> Result<Profile, FerriormError> {
         let client = self.client;
         macro_rules! build_insert {
-            ($qb_type:ty) => {{
-                let mut cols: Vec<&str> = Vec::new();
-                cols.push("bio");
-                cols.push("avatar");
-                cols.push("user_id");
-                cols.push("id");
-                let mut qb = sqlx::QueryBuilder::<$qb_type>::new("INSERT INTO \"profiles\"");
-                qb.push(" (");
-                for (i, col) in cols.iter().enumerate() {
-                    if i > 0 {
-                        qb.push(", ");
-                    }
-                    qb.push("\"");
-                    qb.push(*col);
-                    qb.push("\"");
-                }
-                qb.push(") VALUES (");
-                {
-                    let mut sep = qb.separated(", ");
-                    sep.push_bind(self.data.bio);
-                    sep.push_bind(self.data.avatar);
-                    sep.push_bind(self.data.user_id);
-                    let val = self
-                        .data
-                        .id
-                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-                    sep.push_bind(val);
-                }
-                qb.push(") RETURNING *");
-                qb
-            }};
+            ($qb_type:ty) => {
+                { let mut cols : Vec < & str > = Vec::new(); cols.push("bio"); cols
+                .push("avatar"); cols.push("disconnected_at"); cols.push("user_id"); cols
+                .push("id"); let mut qb = sqlx::QueryBuilder:: < $qb_type >
+                ::new("INSERT INTO \"profiles\""); qb.push(" ("); for (i, col) in cols
+                .iter().enumerate() { if i > 0 { qb.push(", "); } qb.push("\""); qb
+                .push(* col); qb.push("\""); } qb.push(") VALUES ("); { let mut sep = qb
+                .separated(", "); sep.push_bind(self.data.bio); sep.push_bind(self.data
+                .avatar); sep.push_bind(self.data.disconnected_at); sep.push_bind(self
+                .data.user_id); let val = self.data.id.unwrap_or_else(||
+                uuid::Uuid::new_v4().to_string()); sep.push_bind(val); } qb
+                .push(") RETURNING *"); qb }
+            };
         }
         match client {
             DatabaseClient::Postgres(_) => {
@@ -602,6 +738,53 @@ impl<'a> CreateQuery<'a> {
             DatabaseClient::Sqlite(_) => {
                 let qb = build_insert!(sqlx::Sqlite);
                 client.fetch_one_sqlite(qb).await
+            }
+        }
+    }
+    /// Switch the insert into "ignore on conflict" mode:
+    /// PostgreSQL uses `ON CONFLICT DO NOTHING`, SQLite uses `INSERT OR IGNORE`.
+    /// Returns `Ok(None)` when a conflict suppressed the insert.
+    pub fn on_conflict_ignore(self) -> CreateIgnoreQuery<'a> {
+        CreateIgnoreQuery {
+            client: self.client,
+            data: self.data,
+        }
+    }
+}
+pub struct CreateIgnoreQuery<'a> {
+    client: &'a DatabaseClient,
+    data: data::ProfileCreateInput,
+}
+impl<'a> CreateIgnoreQuery<'a> {
+    pub async fn exec(self) -> Result<Option<Profile>, FerriormError> {
+        let client = self.client;
+        macro_rules! build_insert_ignore {
+            ($qb_type:ty, $head:expr, $tail:expr) => {
+                { let mut cols : Vec < & str > = Vec::new(); cols.push("bio"); cols
+                .push("avatar"); cols.push("disconnected_at"); cols.push("user_id"); cols
+                .push("id"); let mut qb = sqlx::QueryBuilder:: < $qb_type > ::new($head);
+                qb.push(" ("); for (i, col) in cols.iter().enumerate() { if i > 0 { qb
+                .push(", "); } qb.push("\""); qb.push(* col); qb.push("\""); } qb
+                .push(") VALUES ("); { let mut sep = qb.separated(", "); sep
+                .push_bind(self.data.bio); sep.push_bind(self.data.avatar); sep
+                .push_bind(self.data.disconnected_at); sep.push_bind(self.data.user_id);
+                let val = self.data.id.unwrap_or_else(|| uuid::Uuid::new_v4()
+                .to_string()); sep.push_bind(val); } qb.push(")"); qb.push($tail); qb
+                .push(" RETURNING *"); qb }
+            };
+        }
+        match client {
+            DatabaseClient::Postgres(_) => {
+                let qb = build_insert_ignore!(
+                    sqlx::Postgres, "INSERT INTO \"profiles\"", " ON CONFLICT DO NOTHING"
+                );
+                client.fetch_optional_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let qb = build_insert_ignore!(
+                    sqlx::Sqlite, "INSERT OR IGNORE INTO \"profiles\"", ""
+                );
+                client.fetch_optional_sqlite(qb).await
             }
         }
     }
@@ -615,41 +798,23 @@ impl<'a> UpdateQuery<'a> {
     pub async fn exec(self) -> Result<Profile, FerriormError> {
         let client = self.client;
         macro_rules! build_update {
-            ($qb_type:ty) => {{
-                let mut qb = sqlx::QueryBuilder::<$qb_type>::new("UPDATE \"profiles\" SET ");
-                let mut first_set = true;
-                if let Some(SetValue::Set(v)) = self.data.bio {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "bio", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.avatar {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "avatar", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.user_id {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "user_id", "\" = "));
-                    qb.push_bind(v);
-                }
-                if first_set {
-                    return Err(FerriormError::Query("No fields to update".into()));
-                }
-                qb.push(" WHERE 1=1");
-                self.r#where.build_where(&mut qb);
-                qb.push(" RETURNING *");
-                qb
-            }};
+            ($qb_type:ty) => {
+                { let mut qb = sqlx::QueryBuilder:: < $qb_type >
+                ::new("UPDATE \"profiles\" SET "); let mut first_set = true; if let
+                Some(SetValue::Set(v)) = self.data.bio { if ! first_set { qb.push(", ");
+                } first_set = false; qb.push(concat!("\"", "bio", "\" = ")); qb
+                .push_bind(v); } if let Some(SetValue::Set(v)) = self.data.avatar { if !
+                first_set { qb.push(", "); } first_set = false; qb.push(concat!("\"",
+                "avatar", "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) =
+                self.data.disconnected_at { if ! first_set { qb.push(", "); } first_set =
+                false; qb.push(concat!("\"", "disconnected_at", "\" = ")); qb
+                .push_bind(v); } if let Some(SetValue::Set(v)) = self.data.user_id { if !
+                first_set { qb.push(", "); } first_set = false; qb.push(concat!("\"",
+                "user_id", "\" = ")); qb.push_bind(v); } if first_set { return
+                Err(FerriormError::Query("No fields to update".into())); } qb
+                .push(" WHERE 1=1"); self.r#where.build_where(& mut qb); qb
+                .push(" RETURNING *"); qb }
+            };
         }
         match client {
             DatabaseClient::Postgres(_) => {
@@ -663,6 +828,45 @@ impl<'a> UpdateQuery<'a> {
         }
     }
 }
+pub struct UpdateFirstQuery<'a> {
+    client: &'a DatabaseClient,
+    r#where: filter::ProfileWhereInput,
+    data: data::ProfileUpdateInput,
+}
+impl<'a> UpdateFirstQuery<'a> {
+    pub async fn exec(self) -> Result<Option<Profile>, FerriormError> {
+        let client = self.client;
+        macro_rules! build_update_first {
+            ($qb_type:ty) => {
+                { let mut qb = sqlx::QueryBuilder:: < $qb_type >
+                ::new("UPDATE \"profiles\" SET "); let mut first_set = true; if let
+                Some(SetValue::Set(v)) = self.data.bio { if ! first_set { qb.push(", ");
+                } first_set = false; qb.push(concat!("\"", "bio", "\" = ")); qb
+                .push_bind(v); } if let Some(SetValue::Set(v)) = self.data.avatar { if !
+                first_set { qb.push(", "); } first_set = false; qb.push(concat!("\"",
+                "avatar", "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) =
+                self.data.disconnected_at { if ! first_set { qb.push(", "); } first_set =
+                false; qb.push(concat!("\"", "disconnected_at", "\" = ")); qb
+                .push_bind(v); } if let Some(SetValue::Set(v)) = self.data.user_id { if !
+                first_set { qb.push(", "); } first_set = false; qb.push(concat!("\"",
+                "user_id", "\" = ")); qb.push_bind(v); } if first_set { return
+                Err(FerriormError::Query("No fields to update".into())); } qb
+                .push(" WHERE 1=1"); self.r#where.build_where(& mut qb); qb
+                .push(" RETURNING *"); qb }
+            };
+        }
+        match client {
+            DatabaseClient::Postgres(_) => {
+                let qb = build_update_first!(sqlx::Postgres);
+                client.fetch_optional_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let qb = build_update_first!(sqlx::Sqlite);
+                client.fetch_optional_sqlite(qb).await
+            }
+        }
+    }
+}
 pub struct DeleteQuery<'a> {
     client: &'a DatabaseClient,
     r#where: filter::ProfileWhereUniqueInput,
@@ -671,17 +875,15 @@ impl<'a> DeleteQuery<'a> {
     pub async fn exec(self) -> Result<Profile, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_delete_query::<sqlx::Postgres>(
-                    "DELETE FROM \"profiles\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_delete_query::<
+                    sqlx::Postgres,
+                >("DELETE FROM \"profiles\" WHERE 1=1", &self.r#where);
                 self.client.fetch_one_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_delete_query::<sqlx::Sqlite>(
-                    "DELETE FROM \"profiles\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_delete_query::<
+                    sqlx::Sqlite,
+                >("DELETE FROM \"profiles\" WHERE 1=1", &self.r#where);
                 self.client.fetch_one_sqlite(qb).await
             }
         }
@@ -699,14 +901,18 @@ impl<'a> CountQuery<'a> {
     pub async fn exec(self) -> Result<i64, FerriormError> {
         let row: CountResult = match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_count_query::<sqlx::Postgres>(
+                let qb = build_count_query::<
+                    sqlx::Postgres,
+                >(
                     "SELECT COUNT(*) as \"count\" FROM \"profiles\" WHERE 1=1",
                     &self.r#where,
                 );
                 self.client.fetch_one_pg(qb).await?
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_count_query::<sqlx::Sqlite>(
+                let qb = build_count_query::<
+                    sqlx::Sqlite,
+                >(
                     "SELECT COUNT(*) as \"count\" FROM \"profiles\" WHERE 1=1",
                     &self.r#where,
                 );
@@ -731,8 +937,8 @@ impl<'a> CreateManyQuery<'a> {
                 client: self.client,
                 data: item,
             }
-            .exec()
-            .await?;
+                .exec()
+                .await?;
         }
         Ok(count)
     }
@@ -746,40 +952,21 @@ impl<'a> UpdateManyQuery<'a> {
     pub async fn exec(self) -> Result<u64, FerriormError> {
         let client = self.client;
         macro_rules! build_update_many {
-            ($qb_type:ty) => {{
-                let mut qb = sqlx::QueryBuilder::<$qb_type>::new("UPDATE \"profiles\" SET ");
-                let mut first_set = true;
-                if let Some(SetValue::Set(v)) = self.data.bio {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "bio", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.avatar {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "avatar", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.user_id {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "user_id", "\" = "));
-                    qb.push_bind(v);
-                }
-                if first_set {
-                    return Ok(0);
-                }
-                qb.push(" WHERE 1=1");
-                self.r#where.build_where(&mut qb);
-                qb
-            }};
+            ($qb_type:ty) => {
+                { let mut qb = sqlx::QueryBuilder:: < $qb_type >
+                ::new("UPDATE \"profiles\" SET "); let mut first_set = true; if let
+                Some(SetValue::Set(v)) = self.data.bio { if ! first_set { qb.push(", ");
+                } first_set = false; qb.push(concat!("\"", "bio", "\" = ")); qb
+                .push_bind(v); } if let Some(SetValue::Set(v)) = self.data.avatar { if !
+                first_set { qb.push(", "); } first_set = false; qb.push(concat!("\"",
+                "avatar", "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) =
+                self.data.disconnected_at { if ! first_set { qb.push(", "); } first_set =
+                false; qb.push(concat!("\"", "disconnected_at", "\" = ")); qb
+                .push_bind(v); } if let Some(SetValue::Set(v)) = self.data.user_id { if !
+                first_set { qb.push(", "); } first_set = false; qb.push(concat!("\"",
+                "user_id", "\" = ")); qb.push_bind(v); } if first_set { return Ok(0); }
+                qb.push(" WHERE 1=1"); self.r#where.build_where(& mut qb); qb }
+            };
         }
         match client {
             DatabaseClient::Postgres(_) => {
@@ -802,68 +989,36 @@ pub struct UpsertQuery<'a> {
 impl<'a> UpsertQuery<'a> {
     pub async fn exec(self) -> Result<Profile, FerriormError> {
         let client = self.client;
+        let conflict_target = self.r#where.conflict_target();
+        let first_conflict_col = self.r#where.first_conflict_col();
         macro_rules! build_upsert {
-            ($qb_type:ty) => {{
-                let mut cols: Vec<&str> = Vec::new();
-                cols.push("bio");
-                cols.push("avatar");
-                cols.push("user_id");
-                cols.push("id");
-                let mut qb = sqlx::QueryBuilder::<$qb_type>::new("INSERT INTO \"profiles\"");
-                qb.push(" (");
-                for (i, col) in cols.iter().enumerate() {
-                    if i > 0 {
-                        qb.push(", ");
-                    }
-                    qb.push("\"");
-                    qb.push(*col);
-                    qb.push("\"");
-                }
-                qb.push(") VALUES (");
-                {
-                    let mut sep = qb.separated(", ");
-                    sep.push_bind(self.create.bio);
-                    sep.push_bind(self.create.avatar);
-                    sep.push_bind(self.create.user_id);
-                    let val = self
-                        .create
-                        .id
-                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-                    sep.push_bind(val);
-                }
-                qb.push(")");
-                qb.push(" ON CONFLICT (\"id\") DO UPDATE SET ");
-                let mut first_set = true;
-                if let Some(SetValue::Set(v)) = self.update.bio {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "bio", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.update.avatar {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "avatar", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.update.user_id {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "user_id", "\" = "));
-                    qb.push_bind(v);
-                }
-                if first_set {
-                    qb.push("\"id\" = \"id\"");
-                }
-                qb.push(" RETURNING *");
-                qb
-            }};
+            ($qb_type:ty) => {
+                { let mut cols : Vec < & str > = Vec::new(); cols.push("bio"); cols
+                .push("avatar"); cols.push("disconnected_at"); cols.push("user_id"); cols
+                .push("id"); let mut qb = sqlx::QueryBuilder:: < $qb_type >
+                ::new("INSERT INTO \"profiles\""); qb.push(" ("); for (i, col) in cols
+                .iter().enumerate() { if i > 0 { qb.push(", "); } qb.push("\""); qb
+                .push(* col); qb.push("\""); } qb.push(") VALUES ("); { let mut sep = qb
+                .separated(", "); sep.push_bind(self.create.bio); sep.push_bind(self
+                .create.avatar); sep.push_bind(self.create.disconnected_at); sep
+                .push_bind(self.create.user_id); let val = self.create.id
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()); sep.push_bind(val);
+                } qb.push(")"); qb.push(" ON CONFLICT "); qb.push(conflict_target); qb
+                .push(" DO UPDATE SET "); let mut first_set = true; if let
+                Some(SetValue::Set(v)) = self.update.bio { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "bio", "\" = "));
+                qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.update.avatar {
+                if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "avatar", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.update.disconnected_at { if ! first_set {
+                qb.push(", "); } first_set = false; qb.push(concat!("\"",
+                "disconnected_at", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.update.user_id { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "user_id",
+                "\" = ")); qb.push_bind(v); } if first_set { qb.push(first_conflict_col);
+                qb.push(" = "); qb.push(first_conflict_col); } qb.push(" RETURNING *");
+                qb }
+            };
         }
         match client {
             DatabaseClient::Postgres(_) => {
@@ -885,18 +1040,101 @@ impl<'a> DeleteManyQuery<'a> {
     pub async fn exec(self) -> Result<u64, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_delete_many_query::<sqlx::Postgres>(
-                    "DELETE FROM \"profiles\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_delete_many_query::<
+                    sqlx::Postgres,
+                >("DELETE FROM \"profiles\" WHERE 1=1", &self.r#where);
                 self.client.execute_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_delete_many_query::<sqlx::Sqlite>(
-                    "DELETE FROM \"profiles\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_delete_many_query::<
+                    sqlx::Sqlite,
+                >("DELETE FROM \"profiles\" WHERE 1=1", &self.r#where);
                 self.client.execute_sqlite(qb).await
+            }
+        }
+    }
+}
+#[derive(Debug, Clone, Copy)]
+pub enum ProfileAggregateField {
+    DisconnectedAt,
+}
+impl ProfileAggregateField {
+    pub fn db_name(&self) -> &'static str {
+        match self {
+            Self::DisconnectedAt => "disconnected_at",
+        }
+    }
+    fn alias(&self, prefix: &'static str) -> &'static str {
+        match (prefix, self) {
+            ("min", Self::DisconnectedAt) => "min_disconnected_at",
+            ("max", Self::DisconnectedAt) => "max_disconnected_at",
+            _ => unreachable!(),
+        }
+    }
+    fn is_numeric(&self) -> bool {
+        false
+    }
+}
+#[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize)]
+pub struct ProfileAggregateResult {
+    #[sqlx(default)]
+    pub min_disconnected_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[sqlx(default)]
+    pub max_disconnected_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+pub struct AggregateQuery<'a> {
+    client: &'a DatabaseClient,
+    r#where: filter::ProfileWhereInput,
+    ops: Vec<(&'static str, &'static str, &'static str)>,
+}
+impl<'a> AggregateQuery<'a> {
+    pub fn avg(mut self, field: ProfileAggregateField) -> Self {
+        assert!(field.is_numeric(), "avg() is only supported on numeric fields");
+        let db_name = field.db_name();
+        let alias = field.alias("avg");
+        self.ops.push(("AVG", db_name, alias));
+        self
+    }
+    pub fn sum(mut self, field: ProfileAggregateField) -> Self {
+        assert!(field.is_numeric(), "sum() is only supported on numeric fields");
+        let db_name = field.db_name();
+        let alias = field.alias("sum");
+        self.ops.push(("SUM", db_name, alias));
+        self
+    }
+    pub fn min(mut self, field: ProfileAggregateField) -> Self {
+        let db_name = field.db_name();
+        let alias = field.alias("min");
+        self.ops.push(("MIN", db_name, alias));
+        self
+    }
+    pub fn max(mut self, field: ProfileAggregateField) -> Self {
+        let db_name = field.db_name();
+        let alias = field.alias("max");
+        self.ops.push(("MAX", db_name, alias));
+        self
+    }
+    pub async fn exec(self) -> Result<ProfileAggregateResult, FerriormError> {
+        if self.ops.is_empty() {
+            return Err(FerriormError::Query("No aggregate operations specified".into()));
+        }
+        let selections: Vec<String> = self
+            .ops
+            .iter()
+            .map(|(func, col, alias)| format!(r#"{}("{}") as "{}""#, func, col, alias))
+            .collect();
+        let select_clause = selections.join(", ");
+        let base_sql = format!("SELECT {} FROM \"profiles\" WHERE 1=1", select_clause);
+        match self.client {
+            DatabaseClient::Postgres(_) => {
+                let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(&base_sql);
+                self.r#where.build_where(&mut qb);
+                self.client.fetch_one_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let mut qb = sqlx::QueryBuilder::<sqlx::Sqlite>::new(&base_sql);
+                self.r#where.build_where(&mut qb);
+                self.client.fetch_one_sqlite(qb).await
             }
         }
     }
@@ -906,6 +1144,7 @@ pub struct ProfileSelect {
     pub id: bool,
     pub bio: bool,
     pub avatar: bool,
+    pub disconnected_at: bool,
     pub user_id: bool,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -917,6 +1156,8 @@ pub struct ProfilePartial {
     pub bio: Option<String>,
     #[sqlx(default)]
     pub avatar: Option<String>,
+    #[sqlx(default)]
+    pub disconnected_at: Option<chrono::DateTime<chrono::Utc>>,
     #[sqlx(default)]
     pub user_id: Option<String>,
 }
@@ -931,14 +1172,13 @@ fn build_select_columns(select: &ProfileSelect) -> String {
     if select.avatar {
         cols.push("\"avatar\"");
     }
+    if select.disconnected_at {
+        cols.push("\"disconnected_at\"");
+    }
     if select.user_id {
         cols.push("\"user_id\"");
     }
-    if cols.is_empty() {
-        "*".to_string()
-    } else {
-        cols.join(", ")
-    }
+    if cols.is_empty() { "*".to_string() } else { cols.join(", ") }
 }
 pub struct FindManySelectQuery<'a> {
     client: &'a DatabaseClient,
@@ -966,23 +1206,15 @@ impl<'a> FindManySelectQuery<'a> {
         let base_sql = format!("SELECT {} FROM \"profiles\" WHERE 1=1", cols);
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_select_query::<sqlx::Postgres>(
-                    &base_sql,
-                    &self.r#where,
-                    &self.order_by,
-                    self.take,
-                    self.skip,
-                );
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(&base_sql, &self.r#where, &self.order_by, self.take, self.skip);
                 self.client.fetch_all_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_select_query::<sqlx::Sqlite>(
-                    &base_sql,
-                    &self.r#where,
-                    &self.order_by,
-                    self.take,
-                    self.skip,
-                );
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(&base_sql, &self.r#where, &self.order_by, self.take, self.skip);
                 self.client.fetch_all_sqlite(qb).await
             }
         }
@@ -999,11 +1231,15 @@ impl<'a> FindUniqueSelectQuery<'a> {
         let base_sql = format!("SELECT {} FROM \"profiles\" WHERE 1=1", cols);
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_unique_select_query::<sqlx::Postgres>(&base_sql, &self.r#where);
+                let qb = build_unique_select_query::<
+                    sqlx::Postgres,
+                >(&base_sql, &self.r#where);
                 self.client.fetch_optional_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_unique_select_query::<sqlx::Sqlite>(&base_sql, &self.r#where);
+                let qb = build_unique_select_query::<
+                    sqlx::Sqlite,
+                >(&base_sql, &self.r#where);
                 self.client.fetch_optional_sqlite(qb).await
             }
         }
@@ -1025,23 +1261,15 @@ impl<'a> FindFirstSelectQuery<'a> {
         let base_sql = format!("SELECT {} FROM \"profiles\" WHERE 1=1", cols);
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_select_query::<sqlx::Postgres>(
-                    &base_sql,
-                    &self.r#where,
-                    &self.order_by,
-                    Some(1),
-                    None,
-                );
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(&base_sql, &self.r#where, &self.order_by, Some(1), None);
                 self.client.fetch_optional_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_select_query::<sqlx::Sqlite>(
-                    &base_sql,
-                    &self.r#where,
-                    &self.order_by,
-                    Some(1),
-                    None,
-                );
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(&base_sql, &self.r#where, &self.order_by, Some(1), None);
                 self.client.fetch_optional_sqlite(qb).await
             }
         }
@@ -1064,23 +1292,17 @@ impl Profile {
         include: &ProfileInclude,
         client: &DatabaseClient,
     ) -> Result<Vec<ProfileWithRelations>, FerriormError> {
-        let mut user_map: std::collections::HashMap<String, super::user::User> =
-            std::collections::HashMap::new();
+        let mut user_map: std::collections::HashMap<String, super::user::User> = std::collections::HashMap::new();
         if include.user {
             let ids: Vec<String> = records.iter().map(|r| r.user_id.clone()).collect();
             if !ids.is_empty() {
                 macro_rules! build_in_query {
-                    ($db:ty) => {{
-                        let mut qb = sqlx::QueryBuilder::<$db>::new(
-                            "SELECT * FROM \"users\" WHERE \"id\" IN (",
-                        );
-                        let mut sep = qb.separated(", ");
-                        for id in &ids {
-                            sep.push_bind(id.clone());
-                        }
-                        qb.push(")");
-                        qb
-                    }};
+                    ($db:ty) => {
+                        { let mut qb = sqlx::QueryBuilder:: < $db >
+                        ::new("SELECT * FROM \"users\" WHERE \"id\" IN ("); let mut sep =
+                        qb.separated(", "); for id in & ids { sep.push_bind(id.clone());
+                        } qb.push(")"); qb }
+                    };
                 }
                 match client {
                     DatabaseClient::Postgres(pool) => {
@@ -1110,14 +1332,15 @@ impl Profile {
         }
         let mut results = Vec::with_capacity(records.len());
         for r in records {
-            results.push(ProfileWithRelations {
-                user: if include.user {
-                    user_map.remove(&r.user_id).map(Some).unwrap_or(None)
-                } else {
-                    None
-                },
-                data: r,
-            });
+            results
+                .push(ProfileWithRelations {
+                    user: if include.user {
+                        user_map.remove(&r.user_id).map(Some).unwrap_or(None)
+                    } else {
+                        None
+                    },
+                    data: r,
+                });
         }
         Ok(results)
     }
@@ -1145,8 +1368,8 @@ impl<'a> FindManyWithIncludeQuery<'a> {
             skip: self.inner.skip,
             take: self.inner.take,
         }
-        .exec()
-        .await?;
+            .exec()
+            .await?;
         Profile::load_relations(records, &include, client).await
     }
 }
@@ -1170,11 +1393,12 @@ impl<'a> FindUniqueWithIncludeQuery<'a> {
             client,
             r#where: self.inner.r#where,
         }
-        .exec()
-        .await?;
+            .exec()
+            .await?;
         match record {
             Some(r) => {
-                let mut results = Profile::load_relations(vec![r], &include, client).await?;
+                let mut results = Profile::load_relations(vec![r], &include, client)
+                    .await?;
                 Ok(results.pop())
             }
             None => Ok(None),

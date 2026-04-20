@@ -178,15 +178,14 @@ See [Relations](./relations.md) for complete documentation.
 
 ## Native Database Type Overrides (`@db.Type`)
 
-You can override the default database column type for a field using the `@db.` prefix followed by a database-specific type name.
+You can annotate fields with `@db.<Type>` to influence the generated Rust type and migration SQL. Currently the wired-up hint is:
 
 ```prisma
-model Product {
-  id          String @id
-  name        String @db.VarChar(255)
-  price       Float  @db.DoublePrecision
-  description String @db.Text
+model Account {
+  followerCount Int @default(0) @db.BigInt
 }
 ```
 
-This instructs the migration engine to use the exact database type specified rather than the default mapping from the scalar type table above. The arguments (if any) are passed through to the column definition.
+`@db.BigInt` on an `Int` field generates `i64` (instead of `i32`) in Rust, uses `BigIntFilter`, and emits `BIGINT` in PostgreSQL migrations. SQLite's `INTEGER` is already variable-width so no migration change is needed there.
+
+Other hints like `@db.VarChar(n)`, `@db.DoublePrecision`, and `@db.Text` parse successfully but are not yet consumed by code generation or migrations. See [Attributes › `@db.Type`](./attributes.md#dbtypeargs) for the full list.

@@ -271,6 +271,7 @@ async fn introspect_tables(
                 is_updated_at,
                 default,
                 relation,
+                db_type: None,
             });
         }
 
@@ -563,6 +564,7 @@ async fn introspect_sqlite_tables(pool: &SqlitePool) -> Result<Vec<Model>, sqlx:
                 is_updated_at,
                 default,
                 relation,
+                db_type: None,
             });
         }
 

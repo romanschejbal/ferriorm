@@ -289,6 +289,12 @@ fn validate_field(
         _ => None,
     });
 
+    // Resolve @db.* type hint (e.g. @db.BigInt)
+    let db_type = field_def.attributes.iter().find_map(|a| match a {
+        ast::FieldAttribute::DbType(ty, args) => Some((ty.clone(), args.clone())),
+        _ => None,
+    });
+
     Ok(Field {
         name: field_def.name.clone(),
         db_name,
@@ -300,6 +306,7 @@ fn validate_field(
         is_updated_at,
         default,
         relation,
+        db_type,
     })
 }
 

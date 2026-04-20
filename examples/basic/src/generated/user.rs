@@ -8,11 +8,11 @@
     clippy::pedantic,
     clippy::nursery
 )]
-use ferriorm_runtime::prelude::chrono;
-use ferriorm_runtime::prelude::sqlx;
-use ferriorm_runtime::prelude::uuid;
-use ferriorm_runtime::prelude::*;
 use serde::{Deserialize, Serialize};
+use ferriorm_runtime::prelude::*;
+use ferriorm_runtime::prelude::sqlx;
+use ferriorm_runtime::prelude::chrono;
+use ferriorm_runtime::prelude::uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 #[sqlx(rename_all = "snake_case")]
 pub struct User {
@@ -33,7 +33,9 @@ pub mod filter {
         pub id: Option<ferriorm_runtime::filter::StringFilter>,
         pub email: Option<ferriorm_runtime::filter::StringFilter>,
         pub name: Option<ferriorm_runtime::filter::NullableStringFilter>,
-        pub role: Option<ferriorm_runtime::filter::EnumFilter<super::super::enums::Role>>,
+        pub role: Option<
+            ferriorm_runtime::filter::EnumFilter<super::super::enums::Role>,
+        >,
         pub created_at: Option<ferriorm_runtime::filter::DateTimeFilter>,
         pub updated_at: Option<ferriorm_runtime::filter::DateTimeFilter>,
         pub and: Option<Vec<UserWhereInput>>,
@@ -49,12 +51,15 @@ pub mod filter {
         pub(crate) fn build_where<'args, DB: sqlx::Database>(
             &self,
             qb: &mut sqlx::QueryBuilder<'args, DB>,
-        ) where
+        )
+        where
             i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
-            Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            Option<
+                chrono::DateTime<chrono::Utc>,
+            >: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         {
             if let Some(filter) = &self.id {
                 if let Some(v) = &filter.equals {
@@ -102,12 +107,26 @@ pub mod filter {
             }
             if let Some(filter) = &self.name {
                 if let Some(v) = &filter.equals {
-                    qb.push(concat!(" AND \"", "name", "\" = "));
-                    qb.push_bind(v.clone());
+                    match v {
+                        None => {
+                            qb.push(concat!(" AND \"", "name", "\" IS NULL"));
+                        }
+                        Some(inner) => {
+                            qb.push(concat!(" AND \"", "name", "\" = "));
+                            qb.push_bind(inner.clone());
+                        }
+                    }
                 }
                 if let Some(v) = &filter.not {
-                    qb.push(concat!(" AND \"", "name", "\" != "));
-                    qb.push_bind(v.clone());
+                    match v {
+                        None => {
+                            qb.push(concat!(" AND \"", "name", "\" IS NOT NULL"));
+                        }
+                        Some(inner) => {
+                            qb.push(concat!(" AND \"", "name", "\" != "));
+                            qb.push_bind(inner.clone());
+                        }
+                    }
                 }
                 if let Some(v) = &filter.contains {
                     qb.push(concat!(" AND \"", "name", "\" LIKE "));
@@ -204,12 +223,15 @@ pub mod filter {
         pub(crate) fn build_where<'args, DB: sqlx::Database>(
             &self,
             qb: &mut sqlx::QueryBuilder<'args, DB>,
-        ) where
+        )
+        where
             i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
-            Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            Option<
+                chrono::DateTime<chrono::Utc>,
+            >: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         {
             match self {
                 Self::Id(v) => {
@@ -220,6 +242,22 @@ pub mod filter {
                     qb.push(concat!(" AND \"", "email", "\" = "));
                     qb.push_bind(v.clone());
                 }
+            }
+        }
+    }
+    impl UserWhereUniqueInput {
+        #[allow(dead_code)]
+        pub(crate) fn conflict_target(&self) -> &'static str {
+            match self {
+                Self::Id(_) => "(\"id\")",
+                Self::Email(_) => "(\"email\")",
+            }
+        }
+        #[allow(dead_code)]
+        pub(crate) fn first_conflict_col(&self) -> &'static str {
+            match self {
+                Self::Id(_) => "\"id\"",
+                Self::Email(_) => "\"email\"",
             }
         }
     }
@@ -234,6 +272,9 @@ pub mod data {
         pub role: Option<super::super::enums::Role>,
         pub created_at: Option<chrono::DateTime<chrono::Utc>>,
     }
+    /// Update payload. Each field is `Option<SetValue<T>>`:
+    /// `None` leaves the column untouched (omitted from the SET clause),
+    /// `Some(SetValue::Set(v))` writes `v`.
     #[derive(Debug, Clone, Default)]
     pub struct UserUpdateInput {
         pub email: Option<SetValue<String>>,
@@ -294,7 +335,10 @@ impl<'a> UserActions<'a> {
     pub fn new(client: &'a DatabaseClient) -> Self {
         Self { client }
     }
-    pub fn find_unique(&self, r#where: filter::UserWhereUniqueInput) -> FindUniqueQuery<'a> {
+    pub fn find_unique(
+        &self,
+        r#where: filter::UserWhereUniqueInput,
+    ) -> FindUniqueQuery<'a> {
         FindUniqueQuery {
             client: self.client,
             r#where,
@@ -328,6 +372,20 @@ impl<'a> UserActions<'a> {
         data: data::UserUpdateInput,
     ) -> UpdateQuery<'a> {
         UpdateQuery {
+            client: self.client,
+            r#where,
+            data,
+        }
+    }
+    /// Like [`update`], but accepts a full `WhereInput` so additional
+    /// predicates (e.g., `status = 'pending'`) can be used for
+    /// compare-and-swap updates. Returns `Ok(None)` if no row matched.
+    pub fn update_first(
+        &self,
+        r#where: filter::UserWhereInput,
+        data: data::UserUpdateInput,
+    ) -> UpdateFirstQuery<'a> {
+        UpdateFirstQuery {
             client: self.client,
             r#where,
             data,
@@ -507,17 +565,15 @@ impl<'a> FindUniqueQuery<'a> {
     pub async fn exec(self) -> Result<Option<User>, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_unique_select_query::<sqlx::Postgres>(
-                    "SELECT * FROM \"users\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_unique_select_query::<
+                    sqlx::Postgres,
+                >("SELECT * FROM \"users\" WHERE 1=1", &self.r#where);
                 self.client.fetch_optional_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_unique_select_query::<sqlx::Sqlite>(
-                    "SELECT * FROM \"users\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_unique_select_query::<
+                    sqlx::Sqlite,
+                >("SELECT * FROM \"users\" WHERE 1=1", &self.r#where);
                 self.client.fetch_optional_sqlite(qb).await
             }
         }
@@ -544,7 +600,9 @@ impl<'a> FindFirstQuery<'a> {
     pub async fn exec(self) -> Result<Option<User>, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_select_query::<sqlx::Postgres>(
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(
                     "SELECT * FROM \"users\" WHERE 1=1",
                     &self.r#where,
                     &self.order_by,
@@ -554,7 +612,9 @@ impl<'a> FindFirstQuery<'a> {
                 self.client.fetch_optional_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_select_query::<sqlx::Sqlite>(
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(
                     "SELECT * FROM \"users\" WHERE 1=1",
                     &self.r#where,
                     &self.order_by,
@@ -599,7 +659,9 @@ impl<'a> FindManyQuery<'a> {
     pub async fn exec(self) -> Result<Vec<User>, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_select_query::<sqlx::Postgres>(
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(
                     "SELECT * FROM \"users\" WHERE 1=1",
                     &self.r#where,
                     &self.order_by,
@@ -609,7 +671,9 @@ impl<'a> FindManyQuery<'a> {
                 self.client.fetch_all_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_select_query::<sqlx::Sqlite>(
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(
                     "SELECT * FROM \"users\" WHERE 1=1",
                     &self.r#where,
                     &self.order_by,
@@ -629,43 +693,21 @@ impl<'a> CreateQuery<'a> {
     pub async fn exec(self) -> Result<User, FerriormError> {
         let client = self.client;
         macro_rules! build_insert {
-            ($qb_type:ty) => {{
-                let mut cols: Vec<&str> = Vec::new();
-                cols.push("email");
-                cols.push("name");
-                cols.push("id");
-                cols.push("role");
-                cols.push("created_at");
-                cols.push("updated_at");
-                let mut qb = sqlx::QueryBuilder::<$qb_type>::new("INSERT INTO \"users\"");
-                qb.push(" (");
-                for (i, col) in cols.iter().enumerate() {
-                    if i > 0 {
-                        qb.push(", ");
-                    }
-                    qb.push("\"");
-                    qb.push(*col);
-                    qb.push("\"");
-                }
-                qb.push(") VALUES (");
-                {
-                    let mut sep = qb.separated(", ");
-                    sep.push_bind(self.data.email);
-                    sep.push_bind(self.data.name);
-                    let val = self
-                        .data
-                        .id
-                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-                    sep.push_bind(val);
-                    let val = self.data.role.unwrap_or_else(|| super::enums::Role::User);
-                    sep.push_bind(val);
-                    let val = self.data.created_at.unwrap_or_else(|| chrono::Utc::now());
-                    sep.push_bind(val);
-                    sep.push_bind(chrono::Utc::now());
-                }
-                qb.push(") RETURNING *");
-                qb
-            }};
+            ($qb_type:ty) => {
+                { let mut cols : Vec < & str > = Vec::new(); cols.push("email"); cols
+                .push("name"); cols.push("id"); cols.push("role"); cols
+                .push("created_at"); cols.push("updated_at"); let mut qb =
+                sqlx::QueryBuilder:: < $qb_type > ::new("INSERT INTO \"users\""); qb
+                .push(" ("); for (i, col) in cols.iter().enumerate() { if i > 0 { qb
+                .push(", "); } qb.push("\""); qb.push(* col); qb.push("\""); } qb
+                .push(") VALUES ("); { let mut sep = qb.separated(", "); sep
+                .push_bind(self.data.email); sep.push_bind(self.data.name); let val =
+                self.data.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()); sep
+                .push_bind(val); let val = self.data.role.unwrap_or_else(||
+                super::enums::Role::User); sep.push_bind(val); let val = self.data
+                .created_at.unwrap_or_else(|| chrono::Utc::now()); sep.push_bind(val);
+                sep.push_bind(chrono::Utc::now()); } qb.push(") RETURNING *"); qb }
+            };
         }
         match client {
             DatabaseClient::Postgres(_) => {
@@ -675,6 +717,56 @@ impl<'a> CreateQuery<'a> {
             DatabaseClient::Sqlite(_) => {
                 let qb = build_insert!(sqlx::Sqlite);
                 client.fetch_one_sqlite(qb).await
+            }
+        }
+    }
+    /// Switch the insert into "ignore on conflict" mode:
+    /// PostgreSQL uses `ON CONFLICT DO NOTHING`, SQLite uses `INSERT OR IGNORE`.
+    /// Returns `Ok(None)` when a conflict suppressed the insert.
+    pub fn on_conflict_ignore(self) -> CreateIgnoreQuery<'a> {
+        CreateIgnoreQuery {
+            client: self.client,
+            data: self.data,
+        }
+    }
+}
+pub struct CreateIgnoreQuery<'a> {
+    client: &'a DatabaseClient,
+    data: data::UserCreateInput,
+}
+impl<'a> CreateIgnoreQuery<'a> {
+    pub async fn exec(self) -> Result<Option<User>, FerriormError> {
+        let client = self.client;
+        macro_rules! build_insert_ignore {
+            ($qb_type:ty, $head:expr, $tail:expr) => {
+                { let mut cols : Vec < & str > = Vec::new(); cols.push("email"); cols
+                .push("name"); cols.push("id"); cols.push("role"); cols
+                .push("created_at"); cols.push("updated_at"); let mut qb =
+                sqlx::QueryBuilder:: < $qb_type > ::new($head); qb.push(" ("); for (i,
+                col) in cols.iter().enumerate() { if i > 0 { qb.push(", "); } qb
+                .push("\""); qb.push(* col); qb.push("\""); } qb.push(") VALUES ("); {
+                let mut sep = qb.separated(", "); sep.push_bind(self.data.email); sep
+                .push_bind(self.data.name); let val = self.data.id.unwrap_or_else(||
+                uuid::Uuid::new_v4().to_string()); sep.push_bind(val); let val = self
+                .data.role.unwrap_or_else(|| super::enums::Role::User); sep
+                .push_bind(val); let val = self.data.created_at.unwrap_or_else(||
+                chrono::Utc::now()); sep.push_bind(val); sep
+                .push_bind(chrono::Utc::now()); } qb.push(")"); qb.push($tail); qb
+                .push(" RETURNING *"); qb }
+            };
+        }
+        match client {
+            DatabaseClient::Postgres(_) => {
+                let qb = build_insert_ignore!(
+                    sqlx::Postgres, "INSERT INTO \"users\"", " ON CONFLICT DO NOTHING"
+                );
+                client.fetch_optional_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let qb = build_insert_ignore!(
+                    sqlx::Sqlite, "INSERT OR IGNORE INTO \"users\"", ""
+                );
+                client.fetch_optional_sqlite(qb).await
             }
         }
     }
@@ -688,55 +780,25 @@ impl<'a> UpdateQuery<'a> {
     pub async fn exec(self) -> Result<User, FerriormError> {
         let client = self.client;
         macro_rules! build_update {
-            ($qb_type:ty) => {{
-                let mut qb = sqlx::QueryBuilder::<$qb_type>::new("UPDATE \"users\" SET ");
-                let mut first_set = true;
-                if let Some(SetValue::Set(v)) = self.data.email {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "email", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.name {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "name", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.role {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "role", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.created_at {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "created_at", "\" = "));
-                    qb.push_bind(v);
-                }
-                if !first_set {
-                    qb.push(", ");
-                }
-                first_set = false;
-                qb.push(concat!("\"", "updated_at", "\" = "));
-                qb.push_bind(chrono::Utc::now());
-                if first_set {
-                    return Err(FerriormError::Query("No fields to update".into()));
-                }
-                qb.push(" WHERE 1=1");
-                self.r#where.build_where(&mut qb);
-                qb.push(" RETURNING *");
-                qb
-            }};
+            ($qb_type:ty) => {
+                { let mut qb = sqlx::QueryBuilder:: < $qb_type >
+                ::new("UPDATE \"users\" SET "); let mut first_set = true; if let
+                Some(SetValue::Set(v)) = self.data.email { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "email",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .name { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "name", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.role { if ! first_set { qb.push(", ");
+                } first_set = false; qb.push(concat!("\"", "role", "\" = ")); qb
+                .push_bind(v); } if let Some(SetValue::Set(v)) = self.data.created_at {
+                if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "created_at", "\" = ")); qb.push_bind(v); } if !
+                first_set { qb.push(", "); } first_set = false; qb.push(concat!("\"",
+                "updated_at", "\" = ")); qb.push_bind(chrono::Utc::now()); if first_set {
+                return Err(FerriormError::Query("No fields to update".into())); } qb
+                .push(" WHERE 1=1"); self.r#where.build_where(& mut qb); qb
+                .push(" RETURNING *"); qb }
+            };
         }
         match client {
             DatabaseClient::Postgres(_) => {
@@ -750,6 +812,47 @@ impl<'a> UpdateQuery<'a> {
         }
     }
 }
+pub struct UpdateFirstQuery<'a> {
+    client: &'a DatabaseClient,
+    r#where: filter::UserWhereInput,
+    data: data::UserUpdateInput,
+}
+impl<'a> UpdateFirstQuery<'a> {
+    pub async fn exec(self) -> Result<Option<User>, FerriormError> {
+        let client = self.client;
+        macro_rules! build_update_first {
+            ($qb_type:ty) => {
+                { let mut qb = sqlx::QueryBuilder:: < $qb_type >
+                ::new("UPDATE \"users\" SET "); let mut first_set = true; if let
+                Some(SetValue::Set(v)) = self.data.email { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "email",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .name { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "name", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.role { if ! first_set { qb.push(", ");
+                } first_set = false; qb.push(concat!("\"", "role", "\" = ")); qb
+                .push_bind(v); } if let Some(SetValue::Set(v)) = self.data.created_at {
+                if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "created_at", "\" = ")); qb.push_bind(v); } if !
+                first_set { qb.push(", "); } first_set = false; qb.push(concat!("\"",
+                "updated_at", "\" = ")); qb.push_bind(chrono::Utc::now()); if first_set {
+                return Err(FerriormError::Query("No fields to update".into())); } qb
+                .push(" WHERE 1=1"); self.r#where.build_where(& mut qb); qb
+                .push(" RETURNING *"); qb }
+            };
+        }
+        match client {
+            DatabaseClient::Postgres(_) => {
+                let qb = build_update_first!(sqlx::Postgres);
+                client.fetch_optional_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let qb = build_update_first!(sqlx::Sqlite);
+                client.fetch_optional_sqlite(qb).await
+            }
+        }
+    }
+}
 pub struct DeleteQuery<'a> {
     client: &'a DatabaseClient,
     r#where: filter::UserWhereUniqueInput,
@@ -758,17 +861,15 @@ impl<'a> DeleteQuery<'a> {
     pub async fn exec(self) -> Result<User, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_delete_query::<sqlx::Postgres>(
-                    "DELETE FROM \"users\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_delete_query::<
+                    sqlx::Postgres,
+                >("DELETE FROM \"users\" WHERE 1=1", &self.r#where);
                 self.client.fetch_one_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_delete_query::<sqlx::Sqlite>(
-                    "DELETE FROM \"users\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_delete_query::<
+                    sqlx::Sqlite,
+                >("DELETE FROM \"users\" WHERE 1=1", &self.r#where);
                 self.client.fetch_one_sqlite(qb).await
             }
         }
@@ -786,14 +887,18 @@ impl<'a> CountQuery<'a> {
     pub async fn exec(self) -> Result<i64, FerriormError> {
         let row: CountResult = match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_count_query::<sqlx::Postgres>(
+                let qb = build_count_query::<
+                    sqlx::Postgres,
+                >(
                     "SELECT COUNT(*) as \"count\" FROM \"users\" WHERE 1=1",
                     &self.r#where,
                 );
                 self.client.fetch_one_pg(qb).await?
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_count_query::<sqlx::Sqlite>(
+                let qb = build_count_query::<
+                    sqlx::Sqlite,
+                >(
                     "SELECT COUNT(*) as \"count\" FROM \"users\" WHERE 1=1",
                     &self.r#where,
                 );
@@ -818,8 +923,8 @@ impl<'a> CreateManyQuery<'a> {
                 client: self.client,
                 data: item,
             }
-            .exec()
-            .await?;
+                .exec()
+                .await?;
         }
         Ok(count)
     }
@@ -833,54 +938,24 @@ impl<'a> UpdateManyQuery<'a> {
     pub async fn exec(self) -> Result<u64, FerriormError> {
         let client = self.client;
         macro_rules! build_update_many {
-            ($qb_type:ty) => {{
-                let mut qb = sqlx::QueryBuilder::<$qb_type>::new("UPDATE \"users\" SET ");
-                let mut first_set = true;
-                if let Some(SetValue::Set(v)) = self.data.email {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "email", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.name {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "name", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.role {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "role", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.created_at {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "created_at", "\" = "));
-                    qb.push_bind(v);
-                }
-                if !first_set {
-                    qb.push(", ");
-                }
-                first_set = false;
-                qb.push(concat!("\"", "updated_at", "\" = "));
-                qb.push_bind(chrono::Utc::now());
-                if first_set {
-                    return Ok(0);
-                }
-                qb.push(" WHERE 1=1");
-                self.r#where.build_where(&mut qb);
-                qb
-            }};
+            ($qb_type:ty) => {
+                { let mut qb = sqlx::QueryBuilder:: < $qb_type >
+                ::new("UPDATE \"users\" SET "); let mut first_set = true; if let
+                Some(SetValue::Set(v)) = self.data.email { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "email",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .name { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "name", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.role { if ! first_set { qb.push(", ");
+                } first_set = false; qb.push(concat!("\"", "role", "\" = ")); qb
+                .push_bind(v); } if let Some(SetValue::Set(v)) = self.data.created_at {
+                if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "created_at", "\" = ")); qb.push_bind(v); } if !
+                first_set { qb.push(", "); } first_set = false; qb.push(concat!("\"",
+                "updated_at", "\" = ")); qb.push_bind(chrono::Utc::now()); if first_set {
+                return Ok(0); } qb.push(" WHERE 1=1"); self.r#where.build_where(& mut
+                qb); qb }
+            };
         }
         match client {
             DatabaseClient::Postgres(_) => {
@@ -903,88 +978,40 @@ pub struct UpsertQuery<'a> {
 impl<'a> UpsertQuery<'a> {
     pub async fn exec(self) -> Result<User, FerriormError> {
         let client = self.client;
+        let conflict_target = self.r#where.conflict_target();
+        let first_conflict_col = self.r#where.first_conflict_col();
         macro_rules! build_upsert {
-            ($qb_type:ty) => {{
-                let mut cols: Vec<&str> = Vec::new();
-                cols.push("email");
-                cols.push("name");
-                cols.push("id");
-                cols.push("role");
-                cols.push("created_at");
-                cols.push("updated_at");
-                let mut qb = sqlx::QueryBuilder::<$qb_type>::new("INSERT INTO \"users\"");
-                qb.push(" (");
-                for (i, col) in cols.iter().enumerate() {
-                    if i > 0 {
-                        qb.push(", ");
-                    }
-                    qb.push("\"");
-                    qb.push(*col);
-                    qb.push("\"");
-                }
-                qb.push(") VALUES (");
-                {
-                    let mut sep = qb.separated(", ");
-                    sep.push_bind(self.create.email);
-                    sep.push_bind(self.create.name);
-                    let val = self
-                        .create
-                        .id
-                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-                    sep.push_bind(val);
-                    let val = self.create.role.unwrap_or_else(|| super::enums::Role::User);
-                    sep.push_bind(val);
-                    let val = self.create.created_at.unwrap_or_else(|| chrono::Utc::now());
-                    sep.push_bind(val);
-                    sep.push_bind(chrono::Utc::now());
-                }
-                qb.push(")");
-                qb.push(" ON CONFLICT (\"id\") DO UPDATE SET ");
-                let mut first_set = true;
-                if let Some(SetValue::Set(v)) = self.update.email {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "email", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.update.name {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "name", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.update.role {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "role", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.update.created_at {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "created_at", "\" = "));
-                    qb.push_bind(v);
-                }
-                if !first_set {
-                    qb.push(", ");
-                }
-                first_set = false;
-                qb.push(concat!("\"", "updated_at", "\" = "));
-                qb.push_bind(chrono::Utc::now());
-                if first_set {
-                    qb.push("\"id\" = \"id\"");
-                }
-                qb.push(" RETURNING *");
-                qb
-            }};
+            ($qb_type:ty) => {
+                { let mut cols : Vec < & str > = Vec::new(); cols.push("email"); cols
+                .push("name"); cols.push("id"); cols.push("role"); cols
+                .push("created_at"); cols.push("updated_at"); let mut qb =
+                sqlx::QueryBuilder:: < $qb_type > ::new("INSERT INTO \"users\""); qb
+                .push(" ("); for (i, col) in cols.iter().enumerate() { if i > 0 { qb
+                .push(", "); } qb.push("\""); qb.push(* col); qb.push("\""); } qb
+                .push(") VALUES ("); { let mut sep = qb.separated(", "); sep
+                .push_bind(self.create.email); sep.push_bind(self.create.name); let val =
+                self.create.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()); sep
+                .push_bind(val); let val = self.create.role.unwrap_or_else(||
+                super::enums::Role::User); sep.push_bind(val); let val = self.create
+                .created_at.unwrap_or_else(|| chrono::Utc::now()); sep.push_bind(val);
+                sep.push_bind(chrono::Utc::now()); } qb.push(")"); qb
+                .push(" ON CONFLICT "); qb.push(conflict_target); qb
+                .push(" DO UPDATE SET "); let mut first_set = true; if let
+                Some(SetValue::Set(v)) = self.update.email { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "email",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.update
+                .name { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "name", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.update.role { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "role",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.update
+                .created_at { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "created_at", "\" = ")); qb.push_bind(v); } if !
+                first_set { qb.push(", "); } first_set = false; qb.push(concat!("\"",
+                "updated_at", "\" = ")); qb.push_bind(chrono::Utc::now()); if first_set {
+                qb.push(first_conflict_col); qb.push(" = "); qb.push(first_conflict_col);
+                } qb.push(" RETURNING *"); qb }
+            };
         }
         match client {
             DatabaseClient::Postgres(_) => {
@@ -1006,17 +1033,15 @@ impl<'a> DeleteManyQuery<'a> {
     pub async fn exec(self) -> Result<u64, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_delete_many_query::<sqlx::Postgres>(
-                    "DELETE FROM \"users\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_delete_many_query::<
+                    sqlx::Postgres,
+                >("DELETE FROM \"users\" WHERE 1=1", &self.r#where);
                 self.client.execute_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_delete_many_query::<sqlx::Sqlite>(
-                    "DELETE FROM \"users\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_delete_many_query::<
+                    sqlx::Sqlite,
+                >("DELETE FROM \"users\" WHERE 1=1", &self.r#where);
                 self.client.execute_sqlite(qb).await
             }
         }
@@ -1065,20 +1090,14 @@ pub struct AggregateQuery<'a> {
 }
 impl<'a> AggregateQuery<'a> {
     pub fn avg(mut self, field: UserAggregateField) -> Self {
-        assert!(
-            field.is_numeric(),
-            "avg() is only supported on numeric fields"
-        );
+        assert!(field.is_numeric(), "avg() is only supported on numeric fields");
         let db_name = field.db_name();
         let alias = field.alias("avg");
         self.ops.push(("AVG", db_name, alias));
         self
     }
     pub fn sum(mut self, field: UserAggregateField) -> Self {
-        assert!(
-            field.is_numeric(),
-            "sum() is only supported on numeric fields"
-        );
+        assert!(field.is_numeric(), "sum() is only supported on numeric fields");
         let db_name = field.db_name();
         let alias = field.alias("sum");
         self.ops.push(("SUM", db_name, alias));
@@ -1098,9 +1117,7 @@ impl<'a> AggregateQuery<'a> {
     }
     pub async fn exec(self) -> Result<UserAggregateResult, FerriormError> {
         if self.ops.is_empty() {
-            return Err(FerriormError::Query(
-                "No aggregate operations specified".into(),
-            ));
+            return Err(FerriormError::Query("No aggregate operations specified".into()));
         }
         let selections: Vec<String> = self
             .ops
@@ -1168,11 +1185,7 @@ fn build_select_columns(select: &UserSelect) -> String {
     if select.updated_at {
         cols.push("\"updated_at\"");
     }
-    if cols.is_empty() {
-        "*".to_string()
-    } else {
-        cols.join(", ")
-    }
+    if cols.is_empty() { "*".to_string() } else { cols.join(", ") }
 }
 pub struct FindManySelectQuery<'a> {
     client: &'a DatabaseClient,
@@ -1200,23 +1213,15 @@ impl<'a> FindManySelectQuery<'a> {
         let base_sql = format!("SELECT {} FROM \"users\" WHERE 1=1", cols);
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_select_query::<sqlx::Postgres>(
-                    &base_sql,
-                    &self.r#where,
-                    &self.order_by,
-                    self.take,
-                    self.skip,
-                );
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(&base_sql, &self.r#where, &self.order_by, self.take, self.skip);
                 self.client.fetch_all_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_select_query::<sqlx::Sqlite>(
-                    &base_sql,
-                    &self.r#where,
-                    &self.order_by,
-                    self.take,
-                    self.skip,
-                );
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(&base_sql, &self.r#where, &self.order_by, self.take, self.skip);
                 self.client.fetch_all_sqlite(qb).await
             }
         }
@@ -1233,11 +1238,15 @@ impl<'a> FindUniqueSelectQuery<'a> {
         let base_sql = format!("SELECT {} FROM \"users\" WHERE 1=1", cols);
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_unique_select_query::<sqlx::Postgres>(&base_sql, &self.r#where);
+                let qb = build_unique_select_query::<
+                    sqlx::Postgres,
+                >(&base_sql, &self.r#where);
                 self.client.fetch_optional_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_unique_select_query::<sqlx::Sqlite>(&base_sql, &self.r#where);
+                let qb = build_unique_select_query::<
+                    sqlx::Sqlite,
+                >(&base_sql, &self.r#where);
                 self.client.fetch_optional_sqlite(qb).await
             }
         }
@@ -1259,23 +1268,15 @@ impl<'a> FindFirstSelectQuery<'a> {
         let base_sql = format!("SELECT {} FROM \"users\" WHERE 1=1", cols);
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_select_query::<sqlx::Postgres>(
-                    &base_sql,
-                    &self.r#where,
-                    &self.order_by,
-                    Some(1),
-                    None,
-                );
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(&base_sql, &self.r#where, &self.order_by, Some(1), None);
                 self.client.fetch_optional_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_select_query::<sqlx::Sqlite>(
-                    &base_sql,
-                    &self.r#where,
-                    &self.order_by,
-                    Some(1),
-                    None,
-                );
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(&base_sql, &self.r#where, &self.order_by, Some(1), None);
                 self.client.fetch_optional_sqlite(qb).await
             }
         }
@@ -1298,32 +1299,22 @@ impl User {
         include: &UserInclude,
         client: &DatabaseClient,
     ) -> Result<Vec<UserWithRelations>, FerriormError> {
-        let mut posts_map: std::collections::HashMap<String, Vec<super::post::Post>> =
-            std::collections::HashMap::new();
+        let mut posts_map: std::collections::HashMap<String, Vec<super::post::Post>> = std::collections::HashMap::new();
         if include.posts {
             let ids: Vec<String> = records.iter().map(|r| r.id.clone()).collect();
             if !ids.is_empty() {
                 macro_rules! build_in_query {
-                    ($db:ty) => {{
-                        let mut qb = sqlx::QueryBuilder::<$db>::new(
-                            "SELECT * FROM \"posts\" WHERE \"author_id\" IN (",
-                        );
-                        let mut sep = qb.separated(", ");
-                        for id in &ids {
-                            sep.push_bind(id.clone());
-                        }
-                        qb.push(")");
-                        qb
-                    }};
+                    ($db:ty) => {
+                        { let mut qb = sqlx::QueryBuilder:: < $db >
+                        ::new("SELECT * FROM \"posts\" WHERE \"author_id\" IN ("); let
+                        mut sep = qb.separated(", "); for id in & ids { sep.push_bind(id
+                        .clone()); } qb.push(")"); qb }
+                    };
                 }
                 macro_rules! insert_rows {
                     ($rows:expr) => {
-                        for row in $rows {
-                            posts_map
-                                .entry(row.author_id.clone())
-                                .or_default()
-                                .push(row);
-                        }
+                        for row in $rows { posts_map.entry(row.author_id.clone())
+                        .or_default().push(row); }
                     };
                 }
                 match client {
@@ -1350,14 +1341,15 @@ impl User {
         }
         let mut results = Vec::with_capacity(records.len());
         for r in records {
-            results.push(UserWithRelations {
-                posts: if include.posts {
-                    Some(posts_map.remove(&r.id).unwrap_or_default())
-                } else {
-                    None
-                },
-                data: r,
-            });
+            results
+                .push(UserWithRelations {
+                    posts: if include.posts {
+                        Some(posts_map.remove(&r.id).unwrap_or_default())
+                    } else {
+                        None
+                    },
+                    data: r,
+                });
         }
         Ok(results)
     }
@@ -1385,8 +1377,8 @@ impl<'a> FindManyWithIncludeQuery<'a> {
             skip: self.inner.skip,
             take: self.inner.take,
         }
-        .exec()
-        .await?;
+            .exec()
+            .await?;
         User::load_relations(records, &include, client).await
     }
 }
@@ -1410,8 +1402,8 @@ impl<'a> FindUniqueWithIncludeQuery<'a> {
             client,
             r#where: self.inner.r#where,
         }
-        .exec()
-        .await?;
+            .exec()
+            .await?;
         match record {
             Some(r) => {
                 let mut results = User::load_relations(vec![r], &include, client).await?;

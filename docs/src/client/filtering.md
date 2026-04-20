@@ -64,19 +64,33 @@ StringFilter {
 }
 ```
 
-### NullableStringFilter
+### Nullable filters (`IS NULL` / `IS NOT NULL`)
 
-For `String?` (optional) fields. Works identically to `StringFilter` except `equals` and `not` are `Option<Option<String>>`:
+Every optional (`?`) scalar field gets a matching nullable filter: `NullableStringFilter`, `NullableIntFilter`, `NullableBigIntFilter`, `NullableFloatFilter`, `NullableBoolFilter`, `NullableDateTimeFilter`.
+
+They behave like the non-nullable siblings except `equals` and `not` are `Option<Option<T>>`:
+
+- `None` — the condition is not applied.
+- `Some(None)` — matches NULL via SQL `IS NULL` (or `IS NOT NULL` for `not`).
+- `Some(Some(v))` — ordinary equality/inequality against `v`.
 
 ```rust
-use ferriorm_runtime::filter::NullableStringFilter;
+use ferriorm_runtime::filter::{NullableStringFilter, NullableDateTimeFilter};
 
-// Match NULL values
+// Users with no name set (name IS NULL)
 NullableStringFilter { equals: Some(None), ..Default::default() }
 
-// Match a specific value
+// A specific name
 NullableStringFilter { equals: Some(Some("Alice".into())), ..Default::default() }
+
+// Profiles that have not been disconnected yet (disconnected_at IS NULL)
+NullableDateTimeFilter { equals: Some(None), ..Default::default() }
+
+// Anything that HAS been disconnected
+NullableDateTimeFilter { not: Some(None), ..Default::default() }
 ```
+
+Ordering operators (`gt`, `gte`, `lt`, `lte`) and `contains`/`starts_with`/`ends_with` keep their non-nullable `Option<T>` shape — they intentionally can't express `IS NULL`, and NULL never matches `LIKE` or comparison operators anyway.
 
 ## IntFilter
 

@@ -8,11 +8,11 @@
     clippy::pedantic,
     clippy::nursery
 )]
-use ferriorm_runtime::prelude::chrono;
-use ferriorm_runtime::prelude::sqlx;
-use ferriorm_runtime::prelude::uuid;
-use ferriorm_runtime::prelude::*;
 use serde::{Deserialize, Serialize};
+use ferriorm_runtime::prelude::*;
+use ferriorm_runtime::prelude::sqlx;
+use ferriorm_runtime::prelude::chrono;
+use ferriorm_runtime::prelude::uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 #[sqlx(rename_all = "snake_case")]
 pub struct Post {
@@ -21,6 +21,7 @@ pub struct Post {
     pub content: Option<String>,
     pub published: bool,
     pub status: super::enums::PostStatus,
+    pub view_count: i64,
     pub author_id: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -36,7 +37,10 @@ pub mod filter {
         pub title: Option<ferriorm_runtime::filter::StringFilter>,
         pub content: Option<ferriorm_runtime::filter::NullableStringFilter>,
         pub published: Option<ferriorm_runtime::filter::BoolFilter>,
-        pub status: Option<ferriorm_runtime::filter::EnumFilter<super::super::enums::PostStatus>>,
+        pub status: Option<
+            ferriorm_runtime::filter::EnumFilter<super::super::enums::PostStatus>,
+        >,
+        pub view_count: Option<ferriorm_runtime::filter::BigIntFilter>,
         pub author_id: Option<ferriorm_runtime::filter::StringFilter>,
         pub created_at: Option<ferriorm_runtime::filter::DateTimeFilter>,
         pub updated_at: Option<ferriorm_runtime::filter::DateTimeFilter>,
@@ -47,19 +51,25 @@ pub mod filter {
     #[derive(Debug, Clone)]
     pub enum PostWhereUniqueInput {
         Id(String),
+        AuthorIdTitle { author_id: String, title: String },
     }
     impl PostWhereInput {
         pub(crate) fn build_where<'args, DB: sqlx::Database>(
             &self,
             qb: &mut sqlx::QueryBuilder<'args, DB>,
-        ) where
+        )
+        where
             i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
-            Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            Option<
+                chrono::DateTime<chrono::Utc>,
+            >: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         {
             if let Some(filter) = &self.id {
                 if let Some(v) = &filter.equals {
@@ -107,12 +117,26 @@ pub mod filter {
             }
             if let Some(filter) = &self.content {
                 if let Some(v) = &filter.equals {
-                    qb.push(concat!(" AND \"", "content", "\" = "));
-                    qb.push_bind(v.clone());
+                    match v {
+                        None => {
+                            qb.push(concat!(" AND \"", "content", "\" IS NULL"));
+                        }
+                        Some(inner) => {
+                            qb.push(concat!(" AND \"", "content", "\" = "));
+                            qb.push_bind(inner.clone());
+                        }
+                    }
                 }
                 if let Some(v) = &filter.not {
-                    qb.push(concat!(" AND \"", "content", "\" != "));
-                    qb.push_bind(v.clone());
+                    match v {
+                        None => {
+                            qb.push(concat!(" AND \"", "content", "\" IS NOT NULL"));
+                        }
+                        Some(inner) => {
+                            qb.push(concat!(" AND \"", "content", "\" != "));
+                            qb.push_bind(inner.clone());
+                        }
+                    }
                 }
                 if let Some(v) = &filter.contains {
                     qb.push(concat!(" AND \"", "content", "\" LIKE "));
@@ -134,6 +158,32 @@ pub mod filter {
                 }
                 if let Some(v) = &filter.not {
                     qb.push(concat!(" AND \"", "published", "\" != "));
+                    qb.push_bind(v.clone());
+                }
+            }
+            if let Some(filter) = &self.view_count {
+                if let Some(v) = &filter.equals {
+                    qb.push(concat!(" AND \"", "view_count", "\" = "));
+                    qb.push_bind(v.clone());
+                }
+                if let Some(v) = &filter.not {
+                    qb.push(concat!(" AND \"", "view_count", "\" != "));
+                    qb.push_bind(v.clone());
+                }
+                if let Some(v) = &filter.gt {
+                    qb.push(concat!(" AND \"", "view_count", "\" > "));
+                    qb.push_bind(v.clone());
+                }
+                if let Some(v) = &filter.gte {
+                    qb.push(concat!(" AND \"", "view_count", "\" >= "));
+                    qb.push_bind(v.clone());
+                }
+                if let Some(v) = &filter.lt {
+                    qb.push(concat!(" AND \"", "view_count", "\" < "));
+                    qb.push_bind(v.clone());
+                }
+                if let Some(v) = &filter.lte {
+                    qb.push(concat!(" AND \"", "view_count", "\" <= "));
                     qb.push_bind(v.clone());
                 }
             }
@@ -241,20 +291,47 @@ pub mod filter {
         pub(crate) fn build_where<'args, DB: sqlx::Database>(
             &self,
             qb: &mut sqlx::QueryBuilder<'args, DB>,
-        ) where
+        )
+        where
             i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
-            Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            Option<
+                chrono::DateTime<chrono::Utc>,
+            >: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         {
             match self {
                 Self::Id(v) => {
                     qb.push(concat!(" AND \"", "id", "\" = "));
                     qb.push_bind(v.clone());
                 }
+                Self::AuthorIdTitle { author_id, title } => {
+                    qb.push(concat!(" AND \"", "author_id", "\" = "));
+                    qb.push_bind(author_id.clone());
+                    qb.push(concat!(" AND \"", "title", "\" = "));
+                    qb.push_bind(title.clone());
+                }
+            }
+        }
+    }
+    impl PostWhereUniqueInput {
+        #[allow(dead_code)]
+        pub(crate) fn conflict_target(&self) -> &'static str {
+            match self {
+                Self::Id(_) => "(\"id\")",
+                Self::AuthorIdTitle { .. } => "(\"author_id\", \"title\")",
+            }
+        }
+        #[allow(dead_code)]
+        pub(crate) fn first_conflict_col(&self) -> &'static str {
+            match self {
+                Self::Id(_) => "\"id\"",
+                Self::AuthorIdTitle { .. } => "\"author_id\"",
             }
         }
     }
@@ -269,14 +346,19 @@ pub mod data {
         pub id: Option<String>,
         pub published: Option<bool>,
         pub status: Option<super::super::enums::PostStatus>,
+        pub view_count: Option<i64>,
         pub created_at: Option<chrono::DateTime<chrono::Utc>>,
     }
+    /// Update payload. Each field is `Option<SetValue<T>>`:
+    /// `None` leaves the column untouched (omitted from the SET clause),
+    /// `Some(SetValue::Set(v))` writes `v`.
     #[derive(Debug, Clone, Default)]
     pub struct PostUpdateInput {
         pub title: Option<SetValue<String>>,
         pub content: Option<SetValue<Option<String>>>,
         pub published: Option<SetValue<bool>>,
         pub status: Option<SetValue<super::super::enums::PostStatus>>,
+        pub view_count: Option<SetValue<i64>>,
         pub author_id: Option<SetValue<String>>,
         pub created_at: Option<SetValue<chrono::DateTime<chrono::Utc>>>,
     }
@@ -290,6 +372,7 @@ pub mod order {
         Content(SortOrder),
         Published(SortOrder),
         Status(SortOrder),
+        ViewCount(SortOrder),
         AuthorId(SortOrder),
         CreatedAt(SortOrder),
         UpdatedAt(SortOrder),
@@ -320,6 +403,10 @@ pub mod order {
                     qb.push(concat!("\"", "status", "\" "));
                     qb.push(order.as_sql());
                 }
+                Self::ViewCount(order) => {
+                    qb.push(concat!("\"", "view_count", "\" "));
+                    qb.push(order.as_sql());
+                }
                 Self::AuthorId(order) => {
                     qb.push(concat!("\"", "author_id", "\" "));
                     qb.push(order.as_sql());
@@ -343,7 +430,10 @@ impl<'a> PostActions<'a> {
     pub fn new(client: &'a DatabaseClient) -> Self {
         Self { client }
     }
-    pub fn find_unique(&self, r#where: filter::PostWhereUniqueInput) -> FindUniqueQuery<'a> {
+    pub fn find_unique(
+        &self,
+        r#where: filter::PostWhereUniqueInput,
+    ) -> FindUniqueQuery<'a> {
         FindUniqueQuery {
             client: self.client,
             r#where,
@@ -377,6 +467,20 @@ impl<'a> PostActions<'a> {
         data: data::PostUpdateInput,
     ) -> UpdateQuery<'a> {
         UpdateQuery {
+            client: self.client,
+            r#where,
+            data,
+        }
+    }
+    /// Like [`update`], but accepts a full `WhereInput` so additional
+    /// predicates (e.g., `status = 'pending'`) can be used for
+    /// compare-and-swap updates. Returns `Ok(None)` if no row matched.
+    pub fn update_first(
+        &self,
+        r#where: filter::PostWhereInput,
+        data: data::PostUpdateInput,
+    ) -> UpdateFirstQuery<'a> {
+        UpdateFirstQuery {
             client: self.client,
             r#where,
             data,
@@ -465,6 +569,8 @@ where
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
@@ -491,6 +597,8 @@ where
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
@@ -509,6 +617,8 @@ where
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
@@ -527,6 +637,8 @@ where
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
@@ -544,6 +656,8 @@ where
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
@@ -566,17 +680,15 @@ impl<'a> FindUniqueQuery<'a> {
     pub async fn exec(self) -> Result<Option<Post>, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_unique_select_query::<sqlx::Postgres>(
-                    "SELECT * FROM \"posts\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_unique_select_query::<
+                    sqlx::Postgres,
+                >("SELECT * FROM \"posts\" WHERE 1=1", &self.r#where);
                 self.client.fetch_optional_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_unique_select_query::<sqlx::Sqlite>(
-                    "SELECT * FROM \"posts\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_unique_select_query::<
+                    sqlx::Sqlite,
+                >("SELECT * FROM \"posts\" WHERE 1=1", &self.r#where);
                 self.client.fetch_optional_sqlite(qb).await
             }
         }
@@ -603,7 +715,9 @@ impl<'a> FindFirstQuery<'a> {
     pub async fn exec(self) -> Result<Option<Post>, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_select_query::<sqlx::Postgres>(
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(
                     "SELECT * FROM \"posts\" WHERE 1=1",
                     &self.r#where,
                     &self.order_by,
@@ -613,7 +727,9 @@ impl<'a> FindFirstQuery<'a> {
                 self.client.fetch_optional_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_select_query::<sqlx::Sqlite>(
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(
                     "SELECT * FROM \"posts\" WHERE 1=1",
                     &self.r#where,
                     &self.order_by,
@@ -658,7 +774,9 @@ impl<'a> FindManyQuery<'a> {
     pub async fn exec(self) -> Result<Vec<Post>, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_select_query::<sqlx::Postgres>(
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(
                     "SELECT * FROM \"posts\" WHERE 1=1",
                     &self.r#where,
                     &self.order_by,
@@ -668,7 +786,9 @@ impl<'a> FindManyQuery<'a> {
                 self.client.fetch_all_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_select_query::<sqlx::Sqlite>(
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(
                     "SELECT * FROM \"posts\" WHERE 1=1",
                     &self.r#where,
                     &self.order_by,
@@ -688,51 +808,25 @@ impl<'a> CreateQuery<'a> {
     pub async fn exec(self) -> Result<Post, FerriormError> {
         let client = self.client;
         macro_rules! build_insert {
-            ($qb_type:ty) => {{
-                let mut cols: Vec<&str> = Vec::new();
-                cols.push("title");
-                cols.push("content");
-                cols.push("author_id");
-                cols.push("id");
-                cols.push("published");
-                cols.push("status");
-                cols.push("created_at");
-                cols.push("updated_at");
-                let mut qb = sqlx::QueryBuilder::<$qb_type>::new("INSERT INTO \"posts\"");
-                qb.push(" (");
-                for (i, col) in cols.iter().enumerate() {
-                    if i > 0 {
-                        qb.push(", ");
-                    }
-                    qb.push("\"");
-                    qb.push(*col);
-                    qb.push("\"");
-                }
-                qb.push(") VALUES (");
-                {
-                    let mut sep = qb.separated(", ");
-                    sep.push_bind(self.data.title);
-                    sep.push_bind(self.data.content);
-                    sep.push_bind(self.data.author_id);
-                    let val = self
-                        .data
-                        .id
-                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-                    sep.push_bind(val);
-                    let val = self.data.published.unwrap_or_else(|| false);
-                    sep.push_bind(val);
-                    let val = self
-                        .data
-                        .status
-                        .unwrap_or_else(|| super::enums::PostStatus::Draft);
-                    sep.push_bind(val);
-                    let val = self.data.created_at.unwrap_or_else(|| chrono::Utc::now());
-                    sep.push_bind(val);
-                    sep.push_bind(chrono::Utc::now());
-                }
-                qb.push(") RETURNING *");
-                qb
-            }};
+            ($qb_type:ty) => {
+                { let mut cols : Vec < & str > = Vec::new(); cols.push("title"); cols
+                .push("content"); cols.push("author_id"); cols.push("id"); cols
+                .push("published"); cols.push("status"); cols.push("view_count"); cols
+                .push("created_at"); cols.push("updated_at"); let mut qb =
+                sqlx::QueryBuilder:: < $qb_type > ::new("INSERT INTO \"posts\""); qb
+                .push(" ("); for (i, col) in cols.iter().enumerate() { if i > 0 { qb
+                .push(", "); } qb.push("\""); qb.push(* col); qb.push("\""); } qb
+                .push(") VALUES ("); { let mut sep = qb.separated(", "); sep
+                .push_bind(self.data.title); sep.push_bind(self.data.content); sep
+                .push_bind(self.data.author_id); let val = self.data.id.unwrap_or_else(||
+                uuid::Uuid::new_v4().to_string()); sep.push_bind(val); let val = self
+                .data.published.unwrap_or_else(|| false); sep.push_bind(val); let val =
+                self.data.status.unwrap_or_else(|| super::enums::PostStatus::Draft); sep
+                .push_bind(val); let val = self.data.view_count.unwrap_or_else(|| 0i64);
+                sep.push_bind(val); let val = self.data.created_at.unwrap_or_else(||
+                chrono::Utc::now()); sep.push_bind(val); sep
+                .push_bind(chrono::Utc::now()); } qb.push(") RETURNING *"); qb }
+            };
         }
         match client {
             DatabaseClient::Postgres(_) => {
@@ -742,6 +836,59 @@ impl<'a> CreateQuery<'a> {
             DatabaseClient::Sqlite(_) => {
                 let qb = build_insert!(sqlx::Sqlite);
                 client.fetch_one_sqlite(qb).await
+            }
+        }
+    }
+    /// Switch the insert into "ignore on conflict" mode:
+    /// PostgreSQL uses `ON CONFLICT DO NOTHING`, SQLite uses `INSERT OR IGNORE`.
+    /// Returns `Ok(None)` when a conflict suppressed the insert.
+    pub fn on_conflict_ignore(self) -> CreateIgnoreQuery<'a> {
+        CreateIgnoreQuery {
+            client: self.client,
+            data: self.data,
+        }
+    }
+}
+pub struct CreateIgnoreQuery<'a> {
+    client: &'a DatabaseClient,
+    data: data::PostCreateInput,
+}
+impl<'a> CreateIgnoreQuery<'a> {
+    pub async fn exec(self) -> Result<Option<Post>, FerriormError> {
+        let client = self.client;
+        macro_rules! build_insert_ignore {
+            ($qb_type:ty, $head:expr, $tail:expr) => {
+                { let mut cols : Vec < & str > = Vec::new(); cols.push("title"); cols
+                .push("content"); cols.push("author_id"); cols.push("id"); cols
+                .push("published"); cols.push("status"); cols.push("view_count"); cols
+                .push("created_at"); cols.push("updated_at"); let mut qb =
+                sqlx::QueryBuilder:: < $qb_type > ::new($head); qb.push(" ("); for (i,
+                col) in cols.iter().enumerate() { if i > 0 { qb.push(", "); } qb
+                .push("\""); qb.push(* col); qb.push("\""); } qb.push(") VALUES ("); {
+                let mut sep = qb.separated(", "); sep.push_bind(self.data.title); sep
+                .push_bind(self.data.content); sep.push_bind(self.data.author_id); let
+                val = self.data.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                sep.push_bind(val); let val = self.data.published.unwrap_or_else(||
+                false); sep.push_bind(val); let val = self.data.status.unwrap_or_else(||
+                super::enums::PostStatus::Draft); sep.push_bind(val); let val = self.data
+                .view_count.unwrap_or_else(|| 0i64); sep.push_bind(val); let val = self
+                .data.created_at.unwrap_or_else(|| chrono::Utc::now()); sep
+                .push_bind(val); sep.push_bind(chrono::Utc::now()); } qb.push(")"); qb
+                .push($tail); qb.push(" RETURNING *"); qb }
+            };
+        }
+        match client {
+            DatabaseClient::Postgres(_) => {
+                let qb = build_insert_ignore!(
+                    sqlx::Postgres, "INSERT INTO \"posts\"", " ON CONFLICT DO NOTHING"
+                );
+                client.fetch_optional_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let qb = build_insert_ignore!(
+                    sqlx::Sqlite, "INSERT OR IGNORE INTO \"posts\"", ""
+                );
+                client.fetch_optional_sqlite(qb).await
             }
         }
     }
@@ -755,71 +902,33 @@ impl<'a> UpdateQuery<'a> {
     pub async fn exec(self) -> Result<Post, FerriormError> {
         let client = self.client;
         macro_rules! build_update {
-            ($qb_type:ty) => {{
-                let mut qb = sqlx::QueryBuilder::<$qb_type>::new("UPDATE \"posts\" SET ");
-                let mut first_set = true;
-                if let Some(SetValue::Set(v)) = self.data.title {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "title", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.content {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "content", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.published {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "published", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.status {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "status", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.author_id {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "author_id", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.created_at {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "created_at", "\" = "));
-                    qb.push_bind(v);
-                }
-                if !first_set {
-                    qb.push(", ");
-                }
-                first_set = false;
-                qb.push(concat!("\"", "updated_at", "\" = "));
-                qb.push_bind(chrono::Utc::now());
-                if first_set {
-                    return Err(FerriormError::Query("No fields to update".into()));
-                }
-                qb.push(" WHERE 1=1");
-                self.r#where.build_where(&mut qb);
-                qb.push(" RETURNING *");
-                qb
-            }};
+            ($qb_type:ty) => {
+                { let mut qb = sqlx::QueryBuilder:: < $qb_type >
+                ::new("UPDATE \"posts\" SET "); let mut first_set = true; if let
+                Some(SetValue::Set(v)) = self.data.title { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "title",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .content { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "content", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.published { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "published",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .status { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "status", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.view_count { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "view_count",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .author_id { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "author_id", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.created_at { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "created_at",
+                "\" = ")); qb.push_bind(v); } if ! first_set { qb.push(", "); } first_set
+                = false; qb.push(concat!("\"", "updated_at", "\" = ")); qb
+                .push_bind(chrono::Utc::now()); if first_set { return
+                Err(FerriormError::Query("No fields to update".into())); } qb
+                .push(" WHERE 1=1"); self.r#where.build_where(& mut qb); qb
+                .push(" RETURNING *"); qb }
+            };
         }
         match client {
             DatabaseClient::Postgres(_) => {
@@ -833,6 +942,55 @@ impl<'a> UpdateQuery<'a> {
         }
     }
 }
+pub struct UpdateFirstQuery<'a> {
+    client: &'a DatabaseClient,
+    r#where: filter::PostWhereInput,
+    data: data::PostUpdateInput,
+}
+impl<'a> UpdateFirstQuery<'a> {
+    pub async fn exec(self) -> Result<Option<Post>, FerriormError> {
+        let client = self.client;
+        macro_rules! build_update_first {
+            ($qb_type:ty) => {
+                { let mut qb = sqlx::QueryBuilder:: < $qb_type >
+                ::new("UPDATE \"posts\" SET "); let mut first_set = true; if let
+                Some(SetValue::Set(v)) = self.data.title { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "title",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .content { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "content", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.published { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "published",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .status { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "status", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.view_count { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "view_count",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .author_id { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "author_id", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.created_at { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "created_at",
+                "\" = ")); qb.push_bind(v); } if ! first_set { qb.push(", "); } first_set
+                = false; qb.push(concat!("\"", "updated_at", "\" = ")); qb
+                .push_bind(chrono::Utc::now()); if first_set { return
+                Err(FerriormError::Query("No fields to update".into())); } qb
+                .push(" WHERE 1=1"); self.r#where.build_where(& mut qb); qb
+                .push(" RETURNING *"); qb }
+            };
+        }
+        match client {
+            DatabaseClient::Postgres(_) => {
+                let qb = build_update_first!(sqlx::Postgres);
+                client.fetch_optional_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let qb = build_update_first!(sqlx::Sqlite);
+                client.fetch_optional_sqlite(qb).await
+            }
+        }
+    }
+}
 pub struct DeleteQuery<'a> {
     client: &'a DatabaseClient,
     r#where: filter::PostWhereUniqueInput,
@@ -841,17 +999,15 @@ impl<'a> DeleteQuery<'a> {
     pub async fn exec(self) -> Result<Post, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_delete_query::<sqlx::Postgres>(
-                    "DELETE FROM \"posts\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_delete_query::<
+                    sqlx::Postgres,
+                >("DELETE FROM \"posts\" WHERE 1=1", &self.r#where);
                 self.client.fetch_one_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_delete_query::<sqlx::Sqlite>(
-                    "DELETE FROM \"posts\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_delete_query::<
+                    sqlx::Sqlite,
+                >("DELETE FROM \"posts\" WHERE 1=1", &self.r#where);
                 self.client.fetch_one_sqlite(qb).await
             }
         }
@@ -869,14 +1025,18 @@ impl<'a> CountQuery<'a> {
     pub async fn exec(self) -> Result<i64, FerriormError> {
         let row: CountResult = match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_count_query::<sqlx::Postgres>(
+                let qb = build_count_query::<
+                    sqlx::Postgres,
+                >(
                     "SELECT COUNT(*) as \"count\" FROM \"posts\" WHERE 1=1",
                     &self.r#where,
                 );
                 self.client.fetch_one_pg(qb).await?
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_count_query::<sqlx::Sqlite>(
+                let qb = build_count_query::<
+                    sqlx::Sqlite,
+                >(
                     "SELECT COUNT(*) as \"count\" FROM \"posts\" WHERE 1=1",
                     &self.r#where,
                 );
@@ -901,8 +1061,8 @@ impl<'a> CreateManyQuery<'a> {
                 client: self.client,
                 data: item,
             }
-            .exec()
-            .await?;
+                .exec()
+                .await?;
         }
         Ok(count)
     }
@@ -916,70 +1076,31 @@ impl<'a> UpdateManyQuery<'a> {
     pub async fn exec(self) -> Result<u64, FerriormError> {
         let client = self.client;
         macro_rules! build_update_many {
-            ($qb_type:ty) => {{
-                let mut qb = sqlx::QueryBuilder::<$qb_type>::new("UPDATE \"posts\" SET ");
-                let mut first_set = true;
-                if let Some(SetValue::Set(v)) = self.data.title {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "title", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.content {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "content", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.published {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "published", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.status {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "status", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.author_id {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "author_id", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.data.created_at {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "created_at", "\" = "));
-                    qb.push_bind(v);
-                }
-                if !first_set {
-                    qb.push(", ");
-                }
-                first_set = false;
-                qb.push(concat!("\"", "updated_at", "\" = "));
-                qb.push_bind(chrono::Utc::now());
-                if first_set {
-                    return Ok(0);
-                }
-                qb.push(" WHERE 1=1");
-                self.r#where.build_where(&mut qb);
-                qb
-            }};
+            ($qb_type:ty) => {
+                { let mut qb = sqlx::QueryBuilder:: < $qb_type >
+                ::new("UPDATE \"posts\" SET "); let mut first_set = true; if let
+                Some(SetValue::Set(v)) = self.data.title { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "title",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .content { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "content", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.published { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "published",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .status { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "status", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.view_count { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "view_count",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.data
+                .author_id { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "author_id", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.data.created_at { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "created_at",
+                "\" = ")); qb.push_bind(v); } if ! first_set { qb.push(", "); } first_set
+                = false; qb.push(concat!("\"", "updated_at", "\" = ")); qb
+                .push_bind(chrono::Utc::now()); if first_set { return Ok(0); } qb
+                .push(" WHERE 1=1"); self.r#where.build_where(& mut qb); qb }
+            };
         }
         match client {
             DatabaseClient::Postgres(_) => {
@@ -1002,112 +1123,52 @@ pub struct UpsertQuery<'a> {
 impl<'a> UpsertQuery<'a> {
     pub async fn exec(self) -> Result<Post, FerriormError> {
         let client = self.client;
+        let conflict_target = self.r#where.conflict_target();
+        let first_conflict_col = self.r#where.first_conflict_col();
         macro_rules! build_upsert {
-            ($qb_type:ty) => {{
-                let mut cols: Vec<&str> = Vec::new();
-                cols.push("title");
-                cols.push("content");
-                cols.push("author_id");
-                cols.push("id");
-                cols.push("published");
-                cols.push("status");
-                cols.push("created_at");
-                cols.push("updated_at");
-                let mut qb = sqlx::QueryBuilder::<$qb_type>::new("INSERT INTO \"posts\"");
-                qb.push(" (");
-                for (i, col) in cols.iter().enumerate() {
-                    if i > 0 {
-                        qb.push(", ");
-                    }
-                    qb.push("\"");
-                    qb.push(*col);
-                    qb.push("\"");
-                }
-                qb.push(") VALUES (");
-                {
-                    let mut sep = qb.separated(", ");
-                    sep.push_bind(self.create.title);
-                    sep.push_bind(self.create.content);
-                    sep.push_bind(self.create.author_id);
-                    let val = self
-                        .create
-                        .id
-                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-                    sep.push_bind(val);
-                    let val = self.create.published.unwrap_or_else(|| false);
-                    sep.push_bind(val);
-                    let val = self
-                        .create
-                        .status
-                        .unwrap_or_else(|| super::enums::PostStatus::Draft);
-                    sep.push_bind(val);
-                    let val = self.create.created_at.unwrap_or_else(|| chrono::Utc::now());
-                    sep.push_bind(val);
-                    sep.push_bind(chrono::Utc::now());
-                }
-                qb.push(")");
-                qb.push(" ON CONFLICT (\"id\") DO UPDATE SET ");
-                let mut first_set = true;
-                if let Some(SetValue::Set(v)) = self.update.title {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "title", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.update.content {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "content", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.update.published {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "published", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.update.status {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "status", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.update.author_id {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "author_id", "\" = "));
-                    qb.push_bind(v);
-                }
-                if let Some(SetValue::Set(v)) = self.update.created_at {
-                    if !first_set {
-                        qb.push(", ");
-                    }
-                    first_set = false;
-                    qb.push(concat!("\"", "created_at", "\" = "));
-                    qb.push_bind(v);
-                }
-                if !first_set {
-                    qb.push(", ");
-                }
-                first_set = false;
-                qb.push(concat!("\"", "updated_at", "\" = "));
-                qb.push_bind(chrono::Utc::now());
-                if first_set {
-                    qb.push("\"id\" = \"id\"");
-                }
-                qb.push(" RETURNING *");
-                qb
-            }};
+            ($qb_type:ty) => {
+                { let mut cols : Vec < & str > = Vec::new(); cols.push("title"); cols
+                .push("content"); cols.push("author_id"); cols.push("id"); cols
+                .push("published"); cols.push("status"); cols.push("view_count"); cols
+                .push("created_at"); cols.push("updated_at"); let mut qb =
+                sqlx::QueryBuilder:: < $qb_type > ::new("INSERT INTO \"posts\""); qb
+                .push(" ("); for (i, col) in cols.iter().enumerate() { if i > 0 { qb
+                .push(", "); } qb.push("\""); qb.push(* col); qb.push("\""); } qb
+                .push(") VALUES ("); { let mut sep = qb.separated(", "); sep
+                .push_bind(self.create.title); sep.push_bind(self.create.content); sep
+                .push_bind(self.create.author_id); let val = self.create.id
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()); sep.push_bind(val);
+                let val = self.create.published.unwrap_or_else(|| false); sep
+                .push_bind(val); let val = self.create.status.unwrap_or_else(||
+                super::enums::PostStatus::Draft); sep.push_bind(val); let val = self
+                .create.view_count.unwrap_or_else(|| 0i64); sep.push_bind(val); let val =
+                self.create.created_at.unwrap_or_else(|| chrono::Utc::now()); sep
+                .push_bind(val); sep.push_bind(chrono::Utc::now()); } qb.push(")"); qb
+                .push(" ON CONFLICT "); qb.push(conflict_target); qb
+                .push(" DO UPDATE SET "); let mut first_set = true; if let
+                Some(SetValue::Set(v)) = self.update.title { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "title",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.update
+                .content { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "content", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.update.published { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "published",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.update
+                .status { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "status", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.update.view_count { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "view_count",
+                "\" = ")); qb.push_bind(v); } if let Some(SetValue::Set(v)) = self.update
+                .author_id { if ! first_set { qb.push(", "); } first_set = false; qb
+                .push(concat!("\"", "author_id", "\" = ")); qb.push_bind(v); } if let
+                Some(SetValue::Set(v)) = self.update.created_at { if ! first_set { qb
+                .push(", "); } first_set = false; qb.push(concat!("\"", "created_at",
+                "\" = ")); qb.push_bind(v); } if ! first_set { qb.push(", "); } first_set
+                = false; qb.push(concat!("\"", "updated_at", "\" = ")); qb
+                .push_bind(chrono::Utc::now()); if first_set { qb
+                .push(first_conflict_col); qb.push(" = "); qb.push(first_conflict_col); }
+                qb.push(" RETURNING *"); qb }
+            };
         }
         match client {
             DatabaseClient::Postgres(_) => {
@@ -1129,17 +1190,15 @@ impl<'a> DeleteManyQuery<'a> {
     pub async fn exec(self) -> Result<u64, FerriormError> {
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_delete_many_query::<sqlx::Postgres>(
-                    "DELETE FROM \"posts\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_delete_many_query::<
+                    sqlx::Postgres,
+                >("DELETE FROM \"posts\" WHERE 1=1", &self.r#where);
                 self.client.execute_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_delete_many_query::<sqlx::Sqlite>(
-                    "DELETE FROM \"posts\" WHERE 1=1",
-                    &self.r#where,
-                );
+                let qb = build_delete_many_query::<
+                    sqlx::Sqlite,
+                >("DELETE FROM \"posts\" WHERE 1=1", &self.r#where);
                 self.client.execute_sqlite(qb).await
             }
         }
@@ -1147,18 +1206,24 @@ impl<'a> DeleteManyQuery<'a> {
 }
 #[derive(Debug, Clone, Copy)]
 pub enum PostAggregateField {
+    ViewCount,
     CreatedAt,
     UpdatedAt,
 }
 impl PostAggregateField {
     pub fn db_name(&self) -> &'static str {
         match self {
+            Self::ViewCount => "view_count",
             Self::CreatedAt => "created_at",
             Self::UpdatedAt => "updated_at",
         }
     }
     fn alias(&self, prefix: &'static str) -> &'static str {
         match (prefix, self) {
+            ("avg", Self::ViewCount) => "avg_view_count",
+            ("sum", Self::ViewCount) => "sum_view_count",
+            ("min", Self::ViewCount) => "min_view_count",
+            ("max", Self::ViewCount) => "max_view_count",
             ("min", Self::CreatedAt) => "min_created_at",
             ("max", Self::CreatedAt) => "max_created_at",
             ("min", Self::UpdatedAt) => "min_updated_at",
@@ -1167,11 +1232,23 @@ impl PostAggregateField {
         }
     }
     fn is_numeric(&self) -> bool {
-        false
+        match self {
+            Self::ViewCount => true,
+            #[allow(unreachable_patterns)]
+            _ => false,
+        }
     }
 }
 #[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize)]
 pub struct PostAggregateResult {
+    #[sqlx(default)]
+    pub avg_view_count: Option<f64>,
+    #[sqlx(default)]
+    pub sum_view_count: Option<f64>,
+    #[sqlx(default)]
+    pub min_view_count: Option<i64>,
+    #[sqlx(default)]
+    pub max_view_count: Option<i64>,
     #[sqlx(default)]
     pub min_created_at: Option<chrono::DateTime<chrono::Utc>>,
     #[sqlx(default)]
@@ -1188,20 +1265,14 @@ pub struct AggregateQuery<'a> {
 }
 impl<'a> AggregateQuery<'a> {
     pub fn avg(mut self, field: PostAggregateField) -> Self {
-        assert!(
-            field.is_numeric(),
-            "avg() is only supported on numeric fields"
-        );
+        assert!(field.is_numeric(), "avg() is only supported on numeric fields");
         let db_name = field.db_name();
         let alias = field.alias("avg");
         self.ops.push(("AVG", db_name, alias));
         self
     }
     pub fn sum(mut self, field: PostAggregateField) -> Self {
-        assert!(
-            field.is_numeric(),
-            "sum() is only supported on numeric fields"
-        );
+        assert!(field.is_numeric(), "sum() is only supported on numeric fields");
         let db_name = field.db_name();
         let alias = field.alias("sum");
         self.ops.push(("SUM", db_name, alias));
@@ -1221,9 +1292,7 @@ impl<'a> AggregateQuery<'a> {
     }
     pub async fn exec(self) -> Result<PostAggregateResult, FerriormError> {
         if self.ops.is_empty() {
-            return Err(FerriormError::Query(
-                "No aggregate operations specified".into(),
-            ));
+            return Err(FerriormError::Query("No aggregate operations specified".into()));
         }
         let selections: Vec<String> = self
             .ops
@@ -1253,6 +1322,7 @@ pub struct PostSelect {
     pub content: bool,
     pub published: bool,
     pub status: bool,
+    pub view_count: bool,
     pub author_id: bool,
     pub created_at: bool,
     pub updated_at: bool,
@@ -1270,6 +1340,8 @@ pub struct PostPartial {
     pub published: Option<bool>,
     #[sqlx(default)]
     pub status: Option<super::enums::PostStatus>,
+    #[sqlx(default)]
+    pub view_count: Option<i64>,
     #[sqlx(default)]
     pub author_id: Option<String>,
     #[sqlx(default)]
@@ -1294,6 +1366,9 @@ fn build_select_columns(select: &PostSelect) -> String {
     if select.status {
         cols.push("\"status\"");
     }
+    if select.view_count {
+        cols.push("\"view_count\"");
+    }
     if select.author_id {
         cols.push("\"author_id\"");
     }
@@ -1303,11 +1378,7 @@ fn build_select_columns(select: &PostSelect) -> String {
     if select.updated_at {
         cols.push("\"updated_at\"");
     }
-    if cols.is_empty() {
-        "*".to_string()
-    } else {
-        cols.join(", ")
-    }
+    if cols.is_empty() { "*".to_string() } else { cols.join(", ") }
 }
 pub struct FindManySelectQuery<'a> {
     client: &'a DatabaseClient,
@@ -1335,23 +1406,15 @@ impl<'a> FindManySelectQuery<'a> {
         let base_sql = format!("SELECT {} FROM \"posts\" WHERE 1=1", cols);
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_select_query::<sqlx::Postgres>(
-                    &base_sql,
-                    &self.r#where,
-                    &self.order_by,
-                    self.take,
-                    self.skip,
-                );
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(&base_sql, &self.r#where, &self.order_by, self.take, self.skip);
                 self.client.fetch_all_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_select_query::<sqlx::Sqlite>(
-                    &base_sql,
-                    &self.r#where,
-                    &self.order_by,
-                    self.take,
-                    self.skip,
-                );
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(&base_sql, &self.r#where, &self.order_by, self.take, self.skip);
                 self.client.fetch_all_sqlite(qb).await
             }
         }
@@ -1368,11 +1431,15 @@ impl<'a> FindUniqueSelectQuery<'a> {
         let base_sql = format!("SELECT {} FROM \"posts\" WHERE 1=1", cols);
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_unique_select_query::<sqlx::Postgres>(&base_sql, &self.r#where);
+                let qb = build_unique_select_query::<
+                    sqlx::Postgres,
+                >(&base_sql, &self.r#where);
                 self.client.fetch_optional_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_unique_select_query::<sqlx::Sqlite>(&base_sql, &self.r#where);
+                let qb = build_unique_select_query::<
+                    sqlx::Sqlite,
+                >(&base_sql, &self.r#where);
                 self.client.fetch_optional_sqlite(qb).await
             }
         }
@@ -1394,23 +1461,15 @@ impl<'a> FindFirstSelectQuery<'a> {
         let base_sql = format!("SELECT {} FROM \"posts\" WHERE 1=1", cols);
         match self.client {
             DatabaseClient::Postgres(_) => {
-                let qb = build_select_query::<sqlx::Postgres>(
-                    &base_sql,
-                    &self.r#where,
-                    &self.order_by,
-                    Some(1),
-                    None,
-                );
+                let qb = build_select_query::<
+                    sqlx::Postgres,
+                >(&base_sql, &self.r#where, &self.order_by, Some(1), None);
                 self.client.fetch_optional_pg(qb).await
             }
             DatabaseClient::Sqlite(_) => {
-                let qb = build_select_query::<sqlx::Sqlite>(
-                    &base_sql,
-                    &self.r#where,
-                    &self.order_by,
-                    Some(1),
-                    None,
-                );
+                let qb = build_select_query::<
+                    sqlx::Sqlite,
+                >(&base_sql, &self.r#where, &self.order_by, Some(1), None);
                 self.client.fetch_optional_sqlite(qb).await
             }
         }
@@ -1433,23 +1492,17 @@ impl Post {
         include: &PostInclude,
         client: &DatabaseClient,
     ) -> Result<Vec<PostWithRelations>, FerriormError> {
-        let mut author_map: std::collections::HashMap<String, super::user::User> =
-            std::collections::HashMap::new();
+        let mut author_map: std::collections::HashMap<String, super::user::User> = std::collections::HashMap::new();
         if include.author {
             let ids: Vec<String> = records.iter().map(|r| r.author_id.clone()).collect();
             if !ids.is_empty() {
                 macro_rules! build_in_query {
-                    ($db:ty) => {{
-                        let mut qb = sqlx::QueryBuilder::<$db>::new(
-                            "SELECT * FROM \"users\" WHERE \"id\" IN (",
-                        );
-                        let mut sep = qb.separated(", ");
-                        for id in &ids {
-                            sep.push_bind(id.clone());
-                        }
-                        qb.push(")");
-                        qb
-                    }};
+                    ($db:ty) => {
+                        { let mut qb = sqlx::QueryBuilder:: < $db >
+                        ::new("SELECT * FROM \"users\" WHERE \"id\" IN ("); let mut sep =
+                        qb.separated(", "); for id in & ids { sep.push_bind(id.clone());
+                        } qb.push(")"); qb }
+                    };
                 }
                 match client {
                     DatabaseClient::Postgres(pool) => {
@@ -1479,14 +1532,15 @@ impl Post {
         }
         let mut results = Vec::with_capacity(records.len());
         for r in records {
-            results.push(PostWithRelations {
-                author: if include.author {
-                    author_map.remove(&r.author_id).map(Some).unwrap_or(None)
-                } else {
-                    None
-                },
-                data: r,
-            });
+            results
+                .push(PostWithRelations {
+                    author: if include.author {
+                        author_map.remove(&r.author_id).map(Some).unwrap_or(None)
+                    } else {
+                        None
+                    },
+                    data: r,
+                });
         }
         Ok(results)
     }
@@ -1514,8 +1568,8 @@ impl<'a> FindManyWithIncludeQuery<'a> {
             skip: self.inner.skip,
             take: self.inner.take,
         }
-        .exec()
-        .await?;
+            .exec()
+            .await?;
         Post::load_relations(records, &include, client).await
     }
 }
@@ -1539,8 +1593,8 @@ impl<'a> FindUniqueWithIncludeQuery<'a> {
             client,
             r#where: self.inner.r#where,
         }
-        .exec()
-        .await?;
+            .exec()
+            .await?;
         match record {
             Some(r) => {
                 let mut results = Post::load_relations(vec![r], &include, client).await?;

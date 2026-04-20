@@ -5,11 +5,11 @@
 // to code with absolute `::sqlx::` paths that cannot be resolved through
 // re-exports alone. See the installation guide for required dependencies.
 
-pub mod client;
 pub mod enums;
-pub mod post;
-pub mod profile;
 pub mod user;
+pub mod profile;
+pub mod post;
+pub mod client;
 
 pub use client::FerriormClient;
 pub use enums::*;

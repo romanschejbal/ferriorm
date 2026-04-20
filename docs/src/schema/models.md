@@ -97,15 +97,15 @@ model Post {
 
 ### `@@unique`
 
-Create a composite unique constraint across multiple fields. This ensures that the combination of values is unique across all rows.
+Create a composite unique constraint across multiple fields. This ensures that the combination of values is unique across all rows. Each `@@unique` also becomes a struct-style variant on the generated `WhereUniqueInput`, so it can be used for `find_unique`, `update`, `delete`, and as the `upsert` conflict target. See [Attributes › `@@unique`](./attributes.md#unique-field1-field2-) for the generated shape.
 
 ```prisma
 model Subscription {
-  id     String @id
-  userId String
-  planId String
+  id      String @id
+  userId  Int
+  channel String
 
-  @@unique([userId, planId])
+  @@unique([userId, channel])
 }
 ```
 

@@ -88,6 +88,7 @@ fn gen_data_struct(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
 
 // ─── Filter Module ────────────────────────────────────────────
 
+#[allow(clippy::too_many_lines)]
 fn gen_filter_module(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
     let where_input = format_ident!("{}WhereInput", model.name);
     let where_unique = format_ident!("{}WhereUniqueInput", model.name);
@@ -101,7 +102,7 @@ fn gen_filter_module(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
         })
         .collect();
 
-    let unique_variants: Vec<TokenStream> = scalar_fields
+    let single_unique_variants: Vec<TokenStream> = scalar_fields
         .iter()
         .filter(|f| f.is_id || f.is_unique)
         .map(|f| {
@@ -111,10 +112,27 @@ fn gen_filter_module(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
         })
         .collect();
 
+    let compound_unique_variants: Vec<TokenStream> = model
+        .unique_constraints
+        .iter()
+        .map(|uc| {
+            let variant = format_ident!("{}", compound_variant_name(&uc.fields));
+            let struct_fields = compound_variant_fields(model, &uc.fields);
+            quote! { #variant { #(#struct_fields),* } }
+        })
+        .collect();
+
+    let unique_variants: Vec<TokenStream> = single_unique_variants
+        .into_iter()
+        .chain(compound_unique_variants)
+        .collect();
+
     // Generate build_where for WhereInput
     let db_bounds = collect_db_bounds(scalar_fields);
     let where_arms = gen_where_arms(scalar_fields);
-    let unique_arms = gen_unique_where_arms(scalar_fields);
+    let unique_arms = gen_unique_where_arms(model, scalar_fields);
+    let conflict_target_arms = gen_conflict_target_arms(model, scalar_fields);
+    let first_conflict_col_arms = gen_first_conflict_col_arms(model, scalar_fields);
 
     quote! {
         pub mod filter {
@@ -178,6 +196,22 @@ fn gen_filter_module(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
                 {
                     match self {
                         #(#unique_arms)*
+                    }
+                }
+            }
+
+            impl #where_unique {
+                #[allow(dead_code)]
+                pub(crate) fn conflict_target(&self) -> &'static str {
+                    match self {
+                        #(#conflict_target_arms)*
+                    }
+                }
+
+                #[allow(dead_code)]
+                pub(crate) fn first_conflict_col(&self) -> &'static str {
+                    match self {
+                        #(#first_conflict_col_arms)*
                     }
                 }
             }
@@ -249,16 +283,46 @@ fn gen_where_arms(scalar_fields: &[&Field]) -> Vec<TokenStream> {
 
             let mut arms = vec![];
 
-            arms.push(quote! {
-                if let Some(v) = &filter.equals {
-                    qb.push(concat!(" AND \"", #db_name, "\" = "));
-                    qb.push_bind(v.clone());
-                }
-                if let Some(v) = &filter.not {
-                    qb.push(concat!(" AND \"", #db_name, "\" != "));
-                    qb.push_bind(v.clone());
-                }
-            });
+            if f.is_optional {
+                // Nullable filter: `equals`/`not` are `Option<Option<T>>`.
+                // `Some(None)` means IS NULL / IS NOT NULL; `Some(Some(v))`
+                // is the ordinary `= ?` / `!= ?` comparison.
+                arms.push(quote! {
+                    if let Some(v) = &filter.equals {
+                        match v {
+                            None => {
+                                qb.push(concat!(" AND \"", #db_name, "\" IS NULL"));
+                            }
+                            Some(inner) => {
+                                qb.push(concat!(" AND \"", #db_name, "\" = "));
+                                qb.push_bind(inner.clone());
+                            }
+                        }
+                    }
+                    if let Some(v) = &filter.not {
+                        match v {
+                            None => {
+                                qb.push(concat!(" AND \"", #db_name, "\" IS NOT NULL"));
+                            }
+                            Some(inner) => {
+                                qb.push(concat!(" AND \"", #db_name, "\" != "));
+                                qb.push_bind(inner.clone());
+                            }
+                        }
+                    }
+                });
+            } else {
+                arms.push(quote! {
+                    if let Some(v) = &filter.equals {
+                        qb.push(concat!(" AND \"", #db_name, "\" = "));
+                        qb.push_bind(v.clone());
+                    }
+                    if let Some(v) = &filter.not {
+                        qb.push(concat!(" AND \"", #db_name, "\" != "));
+                        qb.push_bind(v.clone());
+                    }
+                });
+            }
 
             if is_string {
                 arms.push(quote! {
@@ -307,12 +371,8 @@ fn gen_where_arms(scalar_fields: &[&Field]) -> Vec<TokenStream> {
         .collect()
 }
 
-fn gen_unique_where_arms(scalar_fields: &[&Field]) -> Vec<TokenStream> {
-    let _where_unique = format_ident!(
-        "{}WhereUniqueInput",
-        "" // placeholder, we use Self:: instead
-    );
-    scalar_fields
+fn gen_unique_where_arms(model: &Model, scalar_fields: &[&Field]) -> Vec<TokenStream> {
+    let mut arms: Vec<TokenStream> = scalar_fields
         .iter()
         .filter(|f| f.is_id || f.is_unique)
         .map(|f| {
@@ -325,7 +385,112 @@ fn gen_unique_where_arms(scalar_fields: &[&Field]) -> Vec<TokenStream> {
                 }
             }
         })
+        .collect();
+
+    for uc in &model.unique_constraints {
+        let variant = format_ident!("{}", compound_variant_name(&uc.fields));
+        let idents: Vec<_> = uc
+            .fields
+            .iter()
+            .map(|name| format_ident!("{}", to_snake_case(name)))
+            .collect();
+        let binds: Vec<TokenStream> = uc
+            .fields
+            .iter()
+            .map(|name| {
+                let ident = format_ident!("{}", to_snake_case(name));
+                let db_name = resolve_db_name(model, name);
+                quote! {
+                    qb.push(concat!(" AND \"", #db_name, "\" = "));
+                    qb.push_bind(#ident.clone());
+                }
+            })
+            .collect();
+        arms.push(quote! {
+            Self::#variant { #(#idents),* } => {
+                #(#binds)*
+            }
+        });
+    }
+
+    arms
+}
+
+fn gen_conflict_target_arms(model: &Model, scalar_fields: &[&Field]) -> Vec<TokenStream> {
+    let mut arms: Vec<TokenStream> = scalar_fields
+        .iter()
+        .filter(|f| f.is_id || f.is_unique)
+        .map(|f| {
+            let variant = format_ident!("{}", to_pascal_case(&f.name));
+            let target = format!("(\"{}\")", f.db_name);
+            quote! { Self::#variant(_) => #target, }
+        })
+        .collect();
+
+    for uc in &model.unique_constraints {
+        let variant = format_ident!("{}", compound_variant_name(&uc.fields));
+        let cols: Vec<String> = uc
+            .fields
+            .iter()
+            .map(|n| format!("\"{}\"", resolve_db_name(model, n)))
+            .collect();
+        let target = format!("({})", cols.join(", "));
+        arms.push(quote! { Self::#variant { .. } => #target, });
+    }
+
+    arms
+}
+
+fn gen_first_conflict_col_arms(model: &Model, scalar_fields: &[&Field]) -> Vec<TokenStream> {
+    let mut arms: Vec<TokenStream> = scalar_fields
+        .iter()
+        .filter(|f| f.is_id || f.is_unique)
+        .map(|f| {
+            let variant = format_ident!("{}", to_pascal_case(&f.name));
+            let col = format!("\"{}\"", f.db_name);
+            quote! { Self::#variant(_) => #col, }
+        })
+        .collect();
+
+    for uc in &model.unique_constraints {
+        let variant = format_ident!("{}", compound_variant_name(&uc.fields));
+        let first = uc
+            .fields
+            .first()
+            .map_or_else(String::new, |n| resolve_db_name(model, n));
+        let col = format!("\"{first}\"");
+        arms.push(quote! { Self::#variant { .. } => #col, });
+    }
+
+    arms
+}
+
+/// `PascalCase` concatenation of the field names.
+fn compound_variant_name(fields: &[String]) -> String {
+    fields.iter().map(|f| to_pascal_case(f)).collect()
+}
+
+/// Struct-field tokens for a compound variant: `ident: Ty` per field.
+/// Enum struct-variant fields inherit the enum's visibility; no `pub` here.
+fn compound_variant_fields(model: &Model, fields: &[String]) -> Vec<TokenStream> {
+    fields
+        .iter()
+        .filter_map(|field_name| {
+            let field = model.fields.iter().find(|f| f.name == *field_name)?;
+            let ident = format_ident!("{}", to_snake_case(field_name));
+            let ty = rust_type_tokens(field, ModuleDepth::Nested);
+            Some(quote! { #ident: #ty })
+        })
         .collect()
+}
+
+/// Resolve a schema field name to its `db_name`, falling back to `snake_case`.
+fn resolve_db_name(model: &Model, field_name: &str) -> String {
+    model
+        .fields
+        .iter()
+        .find(|f| f.name == field_name)
+        .map_or_else(|| to_snake_case(field_name), |f| f.db_name.clone())
 }
 
 // ─── Data Module ──────────────────────────────────────────────
@@ -374,6 +539,9 @@ fn gen_data_module(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
                 #(#optional_fields,)*
             }
 
+            /// Update payload. Each field is `Option<SetValue<T>>`:
+            /// `None` leaves the column untouched (omitted from the SET clause),
+            /// `Some(SetValue::Set(v))` writes `v`.
             #[derive(Debug, Clone, Default)]
             pub struct #update_name {
                 #(#update_fields,)*
@@ -490,6 +658,13 @@ fn gen_actions(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
                 UpdateQuery { client: self.client, r#where, data }
             }
 
+            /// Like [`update`], but accepts a full `WhereInput` so additional
+            /// predicates (e.g., `status = 'pending'`) can be used for
+            /// compare-and-swap updates. Returns `Ok(None)` if no row matched.
+            pub fn update_first(&self, r#where: filter::#where_input, data: data::#update_input) -> UpdateFirstQuery<'a> {
+                UpdateFirstQuery { client: self.client, r#where, data }
+            }
+
             pub fn delete(&self, r#where: filter::#where_unique) -> DeleteQuery<'a> {
                 DeleteQuery { client: self.client, r#where }
             }
@@ -546,7 +721,9 @@ fn gen_query_builders(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
     let delete_sql = format!(r#"DELETE FROM "{table_name}" WHERE 1=1"#);
 
     let insert_code = gen_insert_code(model, scalar_fields, table_name);
+    let insert_ignore_code = gen_insert_ignore_code(model, scalar_fields, table_name);
     let update_code = gen_update_code(model, scalar_fields, table_name);
+    let update_first_code = gen_update_first_code(model, scalar_fields, table_name);
     let update_many_code = gen_update_many_code(model, scalar_fields, table_name);
     let upsert_code = gen_upsert_code(model, scalar_fields, table_name);
 
@@ -757,6 +934,25 @@ fn gen_query_builders(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
                 let client = self.client;
                 #insert_code
             }
+
+            /// Switch the insert into "ignore on conflict" mode:
+            /// PostgreSQL uses `ON CONFLICT DO NOTHING`, SQLite uses `INSERT OR IGNORE`.
+            /// Returns `Ok(None)` when a conflict suppressed the insert.
+            pub fn on_conflict_ignore(self) -> CreateIgnoreQuery<'a> {
+                CreateIgnoreQuery { client: self.client, data: self.data }
+            }
+        }
+
+        pub struct CreateIgnoreQuery<'a> {
+            client: &'a DatabaseClient,
+            data: data::#_create_input,
+        }
+
+        impl<'a> CreateIgnoreQuery<'a> {
+            pub async fn exec(self) -> Result<Option<#model_ident>, FerriormError> {
+                let client = self.client;
+                #insert_ignore_code
+            }
         }
 
         pub struct UpdateQuery<'a> {
@@ -769,6 +965,19 @@ fn gen_query_builders(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
             pub async fn exec(self) -> Result<#model_ident, FerriormError> {
                 let client = self.client;
                 #update_code
+            }
+        }
+
+        pub struct UpdateFirstQuery<'a> {
+            client: &'a DatabaseClient,
+            r#where: filter::#_where_input,
+            data: data::#_update_input,
+        }
+
+        impl<'a> UpdateFirstQuery<'a> {
+            pub async fn exec(self) -> Result<Option<#model_ident>, FerriormError> {
+                let client = self.client;
+                #update_first_code
             }
         }
 
@@ -981,6 +1190,94 @@ fn gen_insert_code(model: &Model, scalar_fields: &[&Field], table_name: &str) ->
     }
 }
 
+fn gen_insert_ignore_code(
+    _model: &Model,
+    scalar_fields: &[&Field],
+    table_name: &str,
+) -> TokenStream {
+    let required: Vec<&Field> = scalar_fields
+        .iter()
+        .copied()
+        .filter(|f| !f.has_default() && !f.is_updated_at)
+        .collect();
+    let optional: Vec<&Field> = scalar_fields
+        .iter()
+        .copied()
+        .filter(|f| f.has_default() && !f.is_updated_at)
+        .collect();
+    let updated_at: Vec<&Field> = scalar_fields
+        .iter()
+        .copied()
+        .filter(|f| f.is_updated_at)
+        .collect();
+
+    let mut col_pushes = vec![];
+    let mut val_pushes = vec![];
+
+    for f in &required {
+        let db_name = &f.db_name;
+        let field_ident = format_ident!("{}", to_snake_case(&f.name));
+        col_pushes.push(quote! { cols.push(#db_name); });
+        val_pushes.push(quote! { sep.push_bind(self.data.#field_ident); });
+    }
+    for f in &optional {
+        let db_name = &f.db_name;
+        let field_ident = format_ident!("{}", to_snake_case(&f.name));
+        let default_expr = gen_default_expr(f, &f.field_type);
+        col_pushes.push(quote! { cols.push(#db_name); });
+        val_pushes.push(quote! {
+            let val = self.data.#field_ident.unwrap_or_else(|| #default_expr);
+            sep.push_bind(val);
+        });
+    }
+    for f in &updated_at {
+        let db_name = &f.db_name;
+        col_pushes.push(quote! { cols.push(#db_name); });
+        val_pushes.push(quote! { sep.push_bind(chrono::Utc::now()); });
+    }
+
+    let pg_insert_start = format!(r#"INSERT INTO "{table_name}""#);
+    let sqlite_insert_start = format!(r#"INSERT OR IGNORE INTO "{table_name}""#);
+
+    quote! {
+        macro_rules! build_insert_ignore {
+            ($qb_type:ty, $head:expr, $tail:expr) => {{
+                let mut cols: Vec<&str> = Vec::new();
+                #(#col_pushes)*
+
+                let mut qb = sqlx::QueryBuilder::<$qb_type>::new($head);
+                qb.push(" (");
+                for (i, col) in cols.iter().enumerate() {
+                    if i > 0 { qb.push(", "); }
+                    qb.push("\"");
+                    qb.push(*col);
+                    qb.push("\"");
+                }
+                qb.push(") VALUES (");
+                {
+                    let mut sep = qb.separated(", ");
+                    #(#val_pushes)*
+                }
+                qb.push(")");
+                qb.push($tail);
+                qb.push(" RETURNING *");
+                qb
+            }};
+        }
+
+        match client {
+            DatabaseClient::Postgres(_) => {
+                let qb = build_insert_ignore!(sqlx::Postgres, #pg_insert_start, " ON CONFLICT DO NOTHING");
+                client.fetch_optional_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let qb = build_insert_ignore!(sqlx::Sqlite, #sqlite_insert_start, "");
+                client.fetch_optional_sqlite(qb).await
+            }
+        }
+    }
+}
+
 /// Generate a Rust expression for a field's @default value.
 fn gen_default_expr(field: &Field, field_type: &FieldKind) -> TokenStream {
     use ferriorm_core::ast::DefaultValue;
@@ -1004,6 +1301,12 @@ fn gen_default_expr(field: &Field, field_type: &FieldKind) -> TokenStream {
                             quote! { #val }
                         }
                         FieldKind::Scalar(ScalarType::BigInt) => quote! { #i },
+                        // `@db.BigInt` on an `Int` widens the literal to i64 too.
+                        FieldKind::Scalar(ScalarType::Int)
+                            if field.db_type.as_ref().is_some_and(|(ty, _)| ty == "BigInt") =>
+                        {
+                            quote! { #i }
+                        }
                         _ => {
                             // Default to i32 for Int and other types
                             let val = *i as i32;
@@ -1113,6 +1416,88 @@ fn gen_update_code(model: &Model, scalar_fields: &[&Field], table_name: &str) ->
     }
 }
 
+// ─── UPDATE FIRST (CAS) code generation ──────────────────────
+
+fn gen_update_first_code(
+    _model: &Model,
+    scalar_fields: &[&Field],
+    table_name: &str,
+) -> TokenStream {
+    let updatable: Vec<&Field> = scalar_fields
+        .iter()
+        .copied()
+        .filter(|f| !f.is_id && !f.is_updated_at)
+        .collect();
+
+    let updated_at: Vec<&Field> = scalar_fields
+        .iter()
+        .copied()
+        .filter(|f| f.is_updated_at)
+        .collect();
+
+    let update_start = format!(r#"UPDATE "{table_name}" SET "#);
+
+    let set_arms: Vec<TokenStream> = updatable
+        .iter()
+        .map(|f| {
+            let field_ident = format_ident!("{}", to_snake_case(&f.name));
+            let db_name = &f.db_name;
+            quote! {
+                if let Some(SetValue::Set(v)) = self.data.#field_ident {
+                    if !first_set { qb.push(", "); }
+                    first_set = false;
+                    qb.push(concat!("\"", #db_name, "\" = "));
+                    qb.push_bind(v);
+                }
+            }
+        })
+        .collect();
+
+    let updated_at_arms: Vec<TokenStream> = updated_at
+        .iter()
+        .map(|f| {
+            let db_name = &f.db_name;
+            quote! {
+                if !first_set { qb.push(", "); }
+                first_set = false;
+                qb.push(concat!("\"", #db_name, "\" = "));
+                qb.push_bind(chrono::Utc::now());
+            }
+        })
+        .collect();
+
+    quote! {
+        macro_rules! build_update_first {
+            ($qb_type:ty) => {{
+                let mut qb = sqlx::QueryBuilder::<$qb_type>::new(#update_start);
+                let mut first_set = true;
+                #(#set_arms)*
+                #(#updated_at_arms)*
+
+                if first_set {
+                    return Err(FerriormError::Query("No fields to update".into()));
+                }
+
+                qb.push(" WHERE 1=1");
+                self.r#where.build_where(&mut qb);
+                qb.push(" RETURNING *");
+                qb
+            }};
+        }
+
+        match client {
+            DatabaseClient::Postgres(_) => {
+                let qb = build_update_first!(sqlx::Postgres);
+                client.fetch_optional_pg(qb).await
+            }
+            DatabaseClient::Sqlite(_) => {
+                let qb = build_update_first!(sqlx::Sqlite);
+                client.fetch_optional_sqlite(qb).await
+            }
+        }
+    }
+}
+
 // ─── UPDATE MANY code generation ──────────────────────────────
 
 fn gen_update_many_code(_model: &Model, scalar_fields: &[&Field], table_name: &str) -> TokenStream {
@@ -1205,26 +1590,7 @@ enum AggregateKind {
 // ─── UPSERT code generation ──────────────────────────────────
 
 #[allow(clippy::too_many_lines)]
-fn gen_upsert_code(model: &Model, scalar_fields: &[&Field], table_name: &str) -> TokenStream {
-    // Collect primary key db_names for ON CONFLICT clause
-    let pk_db_names: Vec<String> = model
-        .primary_key
-        .fields
-        .iter()
-        .filter_map(|pk| {
-            model
-                .fields
-                .iter()
-                .find(|f| f.name == *pk || to_snake_case(&f.name) == *pk)
-                .map(|f| f.db_name.clone())
-        })
-        .collect();
-    let pk_conflict_cols = pk_db_names
-        .iter()
-        .map(|c| format!("\"{c}\""))
-        .collect::<Vec<_>>()
-        .join(", ");
-
+fn gen_upsert_code(_model: &Model, scalar_fields: &[&Field], table_name: &str) -> TokenStream {
     // Required + optional + updatedAt fields for the INSERT part (same as gen_insert_code)
     let required: Vec<&Field> = scalar_fields
         .iter()
@@ -1304,14 +1670,11 @@ fn gen_upsert_code(model: &Model, scalar_fields: &[&Field], table_name: &str) ->
         .collect();
 
     let insert_start = format!(r#"INSERT INTO "{table_name}""#);
-    let conflict_clause = format!(" ON CONFLICT ({pk_conflict_cols}) DO UPDATE SET ");
-    let noop_set = format!(
-        r#""{}" = "{}""#,
-        pk_db_names.first().unwrap_or(&"id".to_string()),
-        pk_db_names.first().unwrap_or(&"id".to_string()),
-    );
 
     quote! {
+        let conflict_target = self.r#where.conflict_target();
+        let first_conflict_col = self.r#where.first_conflict_col();
+
         macro_rules! build_upsert {
             ($qb_type:ty) => {{
                 let mut cols: Vec<&str> = Vec::new();
@@ -1331,15 +1694,20 @@ fn gen_upsert_code(model: &Model, scalar_fields: &[&Field], table_name: &str) ->
                     #(#val_pushes)*
                 }
                 qb.push(")");
-                qb.push(#conflict_clause);
+                qb.push(" ON CONFLICT ");
+                qb.push(conflict_target);
+                qb.push(" DO UPDATE SET ");
 
                 let mut first_set = true;
                 #(#set_arms)*
                 #(#updated_at_set)*
 
                 if first_set {
-                    // No update fields specified — use a no-op update on the PK
-                    qb.push(#noop_set);
+                    // No update fields specified — use a no-op update on the first
+                    // conflict-target column so RETURNING * still yields the row.
+                    qb.push(first_conflict_col);
+                    qb.push(" = ");
+                    qb.push(first_conflict_col);
                 }
 
                 qb.push(" RETURNING *");

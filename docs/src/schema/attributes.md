@@ -191,7 +191,23 @@ model Product {
 }
 ```
 
-The type name after `@db.` and any arguments in parentheses are passed directly to the database column definition in migrations.
+The type name after `@db.` and any arguments in parentheses are parsed from the schema. Currently, the fully-wired hint is:
+
+| Hint | Effect |
+|---|---|
+| `@db.BigInt` on `Int` | Generates `i64` (not `i32`) in Rust, uses `BigIntFilter`, migrates as `BIGINT` on PostgreSQL. SQLite's `INTEGER` is already variable-width, so no migration change is needed there. |
+
+Use this when your `Int` column holds values that can exceed `i32` range — follower counts, byte sizes, aggregate sums — without committing the whole schema to `BigInt`.
+
+```prisma
+model Account {
+  id            String @id
+  followerCount Int    @default(0) @db.BigInt
+  storageBytes  Int    @default(0) @db.BigInt
+}
+```
+
+Other hints like `@db.VarChar(255)` and `@db.Decimal(p, s)` parse but are not yet consumed by code generation or migrations.
 
 ---
 
@@ -251,15 +267,30 @@ Creates a **composite unique constraint** across multiple fields. The database w
 
 ```prisma
 model Subscription {
-  id     String @id
-  userId String
-  planId String
+  id      String @id
+  userId  Int
+  channel String
 
-  @@unique([userId, planId])
+  @@unique([userId, channel])
 }
 ```
 
-This ensures that a user cannot subscribe to the same plan more than once.
+Each `@@unique` also materializes as a struct-style variant on the model's `WhereUniqueInput` enum, so you can use it with `find_unique`, `update`, `delete`, and `upsert`. The variant name is the PascalCase concatenation of the field names:
+
+```rust
+use generated::subscription::filter::SubscriptionWhereUniqueInput;
+
+client.subscription().upsert(
+    SubscriptionWhereUniqueInput::UserIdChannel {
+        user_id: 42,
+        channel: "ig".into(),
+    },
+    create_input,
+    update_input,
+).exec().await?;
+```
+
+At the SQL layer, `upsert` uses this compound key as the `ON CONFLICT (...)` target automatically.
 
 > For single-field uniqueness, prefer the `@unique` field attribute.
 

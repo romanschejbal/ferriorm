@@ -47,11 +47,39 @@ pub struct IntFilter {
     pub not_in: Option<Vec<i32>>,
 }
 
+/// Filter operations for nullable i32 fields.
+#[derive(Debug, Clone, Default)]
+pub struct NullableIntFilter {
+    /// `Some(None)` means IS NULL, `Some(Some(v))` means equals v.
+    pub equals: Option<Option<i32>>,
+    pub not: Option<Option<i32>>,
+    pub gt: Option<i32>,
+    pub gte: Option<i32>,
+    pub lt: Option<i32>,
+    pub lte: Option<i32>,
+    pub r#in: Option<Vec<i32>>,
+    pub not_in: Option<Vec<i32>>,
+}
+
 /// Filter operations for i64 fields.
 #[derive(Debug, Clone, Default)]
 pub struct BigIntFilter {
     pub equals: Option<i64>,
     pub not: Option<i64>,
+    pub gt: Option<i64>,
+    pub gte: Option<i64>,
+    pub lt: Option<i64>,
+    pub lte: Option<i64>,
+    pub r#in: Option<Vec<i64>>,
+    pub not_in: Option<Vec<i64>>,
+}
+
+/// Filter operations for nullable i64 fields.
+#[derive(Debug, Clone, Default)]
+pub struct NullableBigIntFilter {
+    /// `Some(None)` means IS NULL, `Some(Some(v))` means equals v.
+    pub equals: Option<Option<i64>>,
+    pub not: Option<Option<i64>>,
     pub gt: Option<i64>,
     pub gte: Option<i64>,
     pub lt: Option<i64>,
@@ -71,6 +99,18 @@ pub struct FloatFilter {
     pub lte: Option<f64>,
 }
 
+/// Filter operations for nullable f64 fields.
+#[derive(Debug, Clone, Default)]
+pub struct NullableFloatFilter {
+    /// `Some(None)` means IS NULL, `Some(Some(v))` means equals v.
+    pub equals: Option<Option<f64>>,
+    pub not: Option<Option<f64>>,
+    pub gt: Option<f64>,
+    pub gte: Option<f64>,
+    pub lt: Option<f64>,
+    pub lte: Option<f64>,
+}
+
 /// Filter operations for bool fields.
 #[derive(Debug, Clone, Default)]
 pub struct BoolFilter {
@@ -78,11 +118,32 @@ pub struct BoolFilter {
     pub not: Option<bool>,
 }
 
+/// Filter operations for nullable bool fields.
+#[derive(Debug, Clone, Default)]
+pub struct NullableBoolFilter {
+    /// `Some(None)` means IS NULL, `Some(Some(v))` means equals v.
+    pub equals: Option<Option<bool>>,
+    pub not: Option<Option<bool>>,
+}
+
 /// Filter operations for `DateTime` fields.
 #[derive(Debug, Clone, Default)]
 pub struct DateTimeFilter {
     pub equals: Option<chrono::DateTime<chrono::Utc>>,
     pub not: Option<chrono::DateTime<chrono::Utc>>,
+    pub gt: Option<chrono::DateTime<chrono::Utc>>,
+    pub gte: Option<chrono::DateTime<chrono::Utc>>,
+    pub lt: Option<chrono::DateTime<chrono::Utc>>,
+    pub lte: Option<chrono::DateTime<chrono::Utc>>,
+    pub r#in: Option<Vec<chrono::DateTime<chrono::Utc>>>,
+}
+
+/// Filter operations for nullable `DateTime` fields.
+#[derive(Debug, Clone, Default)]
+pub struct NullableDateTimeFilter {
+    /// `Some(None)` means IS NULL, `Some(Some(v))` means equals v.
+    pub equals: Option<Option<chrono::DateTime<chrono::Utc>>>,
+    pub not: Option<Option<chrono::DateTime<chrono::Utc>>>,
     pub gt: Option<chrono::DateTime<chrono::Utc>>,
     pub gte: Option<chrono::DateTime<chrono::Utc>>,
     pub lt: Option<chrono::DateTime<chrono::Utc>>,

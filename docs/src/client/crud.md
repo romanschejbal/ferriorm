@@ -67,7 +67,31 @@ if let Some(u) = user {
 }
 ```
 
-`UserWhereUniqueInput` is an enum with one variant per `@unique` or `@id` field.
+`UserWhereUniqueInput` is an enum with one variant per `@unique` or `@id` field, plus a **struct-style variant for every `@@unique([...])` on the model**.
+
+```prisma
+model Subscription {
+  id      String @id
+  userId  Int
+  channel String
+
+  @@unique([userId, channel])
+}
+```
+
+```rust
+use generated::subscription::filter::SubscriptionWhereUniqueInput;
+
+client.subscription()
+    .find_unique(SubscriptionWhereUniqueInput::UserIdChannel {
+        user_id: 42,
+        channel: "ig".into(),
+    })
+    .exec()
+    .await?;
+```
+
+The same compound variant is accepted by `update`, `delete`, and `upsert`.
 
 ## Find First
 
@@ -157,13 +181,14 @@ println!("Deleted: {}", deleted.email);
 
 ## Upsert
 
-Insert a record or update it if it already exists (based on the primary key). Uses `INSERT ... ON CONFLICT DO UPDATE` under the hood — works on both PostgreSQL and SQLite.
+Insert a record or update it if the conflict target already exists. Uses `INSERT ... ON CONFLICT DO UPDATE` under the hood — works on both PostgreSQL and SQLite.
+
+The **conflict target is derived at runtime from the `WhereUniqueInput` variant** you pass: a single-field variant (`::Id(..)`, `::Email(..)`) targets that column, a compound variant (`::UserIdChannel { .. }`) targets all its columns. This lets a single `upsert` cover every `@unique` and `@@unique` on the model.
 
 ```rust
+// Upsert by a single unique field:
 let user = client.user().upsert(
-    // Which unique field to match on:
     user::filter::UserWhereUniqueInput::Email("alice@example.com".into()),
-    // Data to INSERT if not found:
     user::data::UserCreateInput {
         email: "alice@example.com".into(),
         name: Some("Alice".into()),
@@ -171,15 +196,83 @@ let user = client.user().upsert(
         id: None,
         created_at: None,
     },
-    // Data to UPDATE if found:
     user::data::UserUpdateInput {
         name: Some(SetValue::Set(Some("Alice Updated".into()))),
         ..Default::default()
     },
 ).exec().await?;
+
+// Upsert by a compound @@unique([userId, channel]):
+client.subscription().upsert(
+    subscription::filter::SubscriptionWhereUniqueInput::UserIdChannel {
+        user_id: 42,
+        channel: "ig".into(),
+    },
+    create_input,
+    update_input,
+).exec().await?;
 ```
 
 If no update fields are provided (`UpdateInput::default()`), the existing row is returned unchanged.
+
+## Create with On-Conflict Ignore
+
+Dedup-on-write: insert the record, or silently skip it if a unique constraint already holds. Returns `Ok(None)` when the insert was suppressed, `Ok(Some(row))` when it succeeded.
+
+```rust
+let maybe_event = client
+    .webhook_event()
+    .create(WebhookEventCreateInput {
+        external_id: "evt_abc123".into(),
+        payload: Some(body),
+        id: None,
+        created_at: None,
+    })
+    .on_conflict_ignore()
+    .exec()
+    .await?;
+
+match maybe_event {
+    Some(row) => println!("stored new event {}", row.id),
+    None => println!("duplicate event, ignored"),
+}
+```
+
+Under the hood: PostgreSQL emits `ON CONFLICT DO NOTHING RETURNING *`, SQLite emits `INSERT OR IGNORE ... RETURNING *`. No conflict target is specified, so any unique violation (primary key, single `@unique`, or `@@unique`) triggers the ignore path.
+
+## Update First (compare-and-swap)
+
+`update` only accepts a `WhereUniqueInput`, which means the row is located solely by its unique key. For state-machine transitions (`status = 'pending' → 'approved'`) you usually want extra predicates so the update is race-safe:
+
+```sql
+UPDATE submissions SET status = 'approved' WHERE id = ? AND status = 'pending' RETURNING *;
+```
+
+Use `update_first` for that. It takes a full `WhereInput` (same type as `find_first`/`update_many`) and returns `Result<Option<Model>>` — `None` if no row matched.
+
+```rust
+let approved = client
+    .submission()
+    .update_first(
+        submission::filter::SubmissionWhereInput {
+            id: Some(StringFilter { equals: Some(id.clone()), ..Default::default() }),
+            status: Some(EnumFilter { equals: Some(Status::Pending), ..Default::default() }),
+            ..Default::default()
+        },
+        submission::data::SubmissionUpdateInput {
+            status: Some(SetValue::Set(Status::Approved)),
+            ..Default::default()
+        },
+    )
+    .exec()
+    .await?;
+
+if approved.is_none() {
+    // Another concurrent worker already moved it out of `pending`.
+}
+```
+
+Unlike `update_many`, `update_first` returns the updated row. Narrow the filter to one row (typically by including the primary key) — if multiple rows match, all of them are updated but only the first is returned.
 
 ## Create Many
 

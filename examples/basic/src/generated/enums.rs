@@ -8,8 +8,8 @@
     clippy::pedantic,
     clippy::nursery
 )]
-use ferriorm_runtime::prelude::sqlx;
 use serde::{Deserialize, Serialize};
+use ferriorm_runtime::prelude::sqlx;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "role", rename_all = "snake_case")]
 pub enum Role {

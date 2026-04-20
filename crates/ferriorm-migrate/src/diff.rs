@@ -112,6 +112,7 @@ pub fn diff_schemas(
     diff_models(&from.models, &to.models, provider, &to.enums, &mut steps);
     diff_foreign_keys(&from.models, &to.models, &mut steps);
     diff_indexes(&from.models, &to.models, &mut steps);
+    diff_unique_constraints(&from.models, &to.models, &mut steps);
 
     sort_steps(steps)
 }
@@ -368,8 +369,8 @@ fn diff_column(
     provider: ferriorm_core::types::DatabaseProvider,
     enums: &[Enum],
 ) -> ColumnChanges {
-    let from_type = field_sql_type(&from.field_type, provider, enums);
-    let to_type = field_sql_type(&to.field_type, provider, enums);
+    let from_type = field_sql_type(from, provider, enums);
+    let to_type = field_sql_type(to, provider, enums);
 
     ColumnChanges {
         sql_type: if from_type == to_type {
@@ -476,6 +477,66 @@ fn diff_indexes(from: &[Model], to: &[Model], steps: &mut Vec<MigrationStep>) {
     }
 }
 
+fn diff_unique_constraints(from: &[Model], to: &[Model], steps: &mut Vec<MigrationStep>) {
+    let from_map: HashMap<&str, &Model> = from.iter().map(|m| (m.db_name.as_str(), m)).collect();
+    let to_map: HashMap<&str, &Model> = to.iter().map(|m| (m.db_name.as_str(), m)).collect();
+
+    for (name, to_model) in &to_map {
+        let from_resolved: Vec<Vec<String>> = from_map
+            .get(name)
+            .map(|m| {
+                m.unique_constraints
+                    .iter()
+                    .map(|uc| resolve_index_columns(&uc.fields, m))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        for uc in &to_model.unique_constraints {
+            let to_cols = resolve_index_columns(&uc.fields, to_model);
+            let uc_name = unique_constraint_name(name, &to_cols);
+
+            if !from_resolved.iter().any(|fi| fi == &to_cols) {
+                steps.push(MigrationStep::AddUniqueConstraint {
+                    table: (*name).to_string(),
+                    name: uc_name,
+                    columns: to_cols,
+                });
+            }
+        }
+    }
+
+    for (name, from_model) in &from_map {
+        let to_resolved: Vec<Vec<String>> = to_map
+            .get(name)
+            .map(|m| {
+                m.unique_constraints
+                    .iter()
+                    .map(|uc| resolve_index_columns(&uc.fields, m))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        for uc in &from_model.unique_constraints {
+            let from_cols = resolve_index_columns(&uc.fields, from_model);
+            if !to_resolved.iter().any(|ti| ti == &from_cols) {
+                // Only drop if the table still exists; if the whole table is
+                // being dropped, the constraint goes with it.
+                if to_map.contains_key(name) {
+                    steps.push(MigrationStep::DropUniqueConstraint {
+                        table: (*name).to_string(),
+                        name: unique_constraint_name(name, &from_cols),
+                    });
+                }
+            }
+        }
+    }
+}
+
+fn unique_constraint_name(table: &str, columns: &[String]) -> String {
+    format!("uq_{}_{}", table, columns.join("_"))
+}
+
 /// Resolve a list of field names (schema names) to database column names by
 /// looking them up in the model. Falls back to `snake_case` if a field isn't found.
 fn resolve_index_columns(field_names: &[String], model: &Model) -> Vec<String> {
@@ -528,7 +589,7 @@ fn field_to_column_def(
 ) -> ColumnDef {
     ColumnDef {
         name: field.db_name.clone(),
-        sql_type: field_sql_type(&field.field_type, provider, enums),
+        sql_type: field_sql_type(field, provider, enums),
         nullable: field.is_optional,
         default: field_default_sql(field, provider),
         is_unique: field.is_unique,
@@ -536,14 +597,21 @@ fn field_to_column_def(
 }
 
 fn field_sql_type(
-    field_type: &FieldKind,
+    field: &Field,
     provider: ferriorm_core::types::DatabaseProvider,
     enums: &[Enum],
 ) -> String {
-    match field_type {
+    // `@db.BigInt` on an `Int` widens the Postgres column type to BIGINT.
+    // (SQLite's `INTEGER` is variable-width so no override is needed.)
+    let bigint_hint = field.db_type.as_ref().is_some_and(|(ty, _)| ty == "BigInt");
+    match &field.field_type {
         FieldKind::Scalar(scalar) => match provider {
             ferriorm_core::types::DatabaseProvider::PostgreSQL => {
-                scalar.postgres_type().to_string()
+                if bigint_hint && matches!(scalar, ferriorm_core::types::ScalarType::Int) {
+                    "BIGINT".to_string()
+                } else {
+                    scalar.postgres_type().to_string()
+                }
             }
             ferriorm_core::types::DatabaseProvider::SQLite => scalar.sqlite_type().to_string(),
             ferriorm_core::types::DatabaseProvider::MySQL => scalar.postgres_type().to_string(), // TODO
@@ -652,6 +720,7 @@ mod tests {
             is_updated_at: false,
             default: None,
             relation: None,
+            db_type: None,
         }
     }
 
@@ -806,6 +875,83 @@ mod tests {
         assert_eq!(
             sqlite_default, None,
             "SQLite should omit DEFAULT for autoincrement() — INTEGER PRIMARY KEY auto-increments"
+        );
+    }
+
+    #[test]
+    fn test_diff_compound_unique_on_new_table() {
+        use ferriorm_core::schema::UniqueConstraint;
+
+        let mut model = make_model(
+            "Subscription",
+            "subscriptions",
+            vec![
+                make_field("id", ScalarType::String, true),
+                make_field("userId", ScalarType::Int, false),
+                make_field("channel", ScalarType::String, false),
+            ],
+        );
+        model.unique_constraints.push(UniqueConstraint {
+            fields: vec!["userId".into(), "channel".into()],
+        });
+
+        let from = make_schema(vec![], vec![]);
+        let to = make_schema(vec![model], vec![]);
+
+        let steps = diff_schemas(&from, &to, DatabaseProvider::PostgreSQL);
+
+        let add_uc = steps.iter().find_map(|s| match s {
+            MigrationStep::AddUniqueConstraint {
+                table,
+                name,
+                columns,
+            } => Some((table, name, columns)),
+            _ => None,
+        });
+
+        let (table, name, columns) = add_uc.expect("expected AddUniqueConstraint step");
+        assert_eq!(table, "subscriptions");
+        assert_eq!(name, "uq_subscriptions_user_id_channel");
+        assert_eq!(columns, &vec!["user_id".to_string(), "channel".to_string()]);
+    }
+
+    #[test]
+    fn test_diff_compound_unique_added_and_dropped() {
+        use ferriorm_core::schema::UniqueConstraint;
+
+        let base = make_model(
+            "Subscription",
+            "subscriptions",
+            vec![
+                make_field("id", ScalarType::String, true),
+                make_field("userId", ScalarType::Int, false),
+                make_field("channel", ScalarType::String, false),
+            ],
+        );
+
+        let mut with_uc = base.clone();
+        with_uc.unique_constraints.push(UniqueConstraint {
+            fields: vec!["userId".into(), "channel".into()],
+        });
+
+        // Adding the constraint
+        let from = make_schema(vec![base.clone()], vec![]);
+        let to = make_schema(vec![with_uc.clone()], vec![]);
+        let steps = diff_schemas(&from, &to, DatabaseProvider::PostgreSQL);
+        assert!(
+            steps
+                .iter()
+                .any(|s| matches!(s, MigrationStep::AddUniqueConstraint { .. })),
+            "adding @@unique should emit AddUniqueConstraint"
+        );
+
+        // Dropping the constraint
+        let steps = diff_schemas(&to, &from, DatabaseProvider::PostgreSQL);
+        assert!(
+            steps
+                .iter()
+                .any(|s| matches!(s, MigrationStep::DropUniqueConstraint { .. })),
+            "removing @@unique should emit DropUniqueConstraint"
         );
     }
 

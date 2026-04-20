@@ -18,7 +18,7 @@ pub enum ModuleDepth {
 #[must_use]
 pub fn rust_type_tokens(field: &Field, depth: ModuleDepth) -> TokenStream {
     let base = match &field.field_type {
-        FieldKind::Scalar(scalar) => scalar_to_tokens(scalar),
+        FieldKind::Scalar(scalar) => scalar_to_tokens_with_hint(scalar, field.db_type.as_ref()),
         FieldKind::Enum(name) => enum_path(name, depth),
         FieldKind::Model(_) => quote! { () },
     };
@@ -40,8 +40,15 @@ pub fn enum_path(name: &str, depth: ModuleDepth) -> TokenStream {
     }
 }
 
-/// Returns the token stream for a scalar type.
-fn scalar_to_tokens(scalar: &ScalarType) -> TokenStream {
+/// Returns the token stream for a scalar type, honouring `@db.*` hints.
+fn scalar_to_tokens_with_hint(
+    scalar: &ScalarType,
+    db_type: Option<&(String, Vec<String>)>,
+) -> TokenStream {
+    // `@db.BigInt` widens `Int` → `i64`.
+    if matches!(scalar, ScalarType::Int) && is_db_bigint(db_type) {
+        return quote! { i64 };
+    }
     match scalar {
         ScalarType::String | ScalarType::Decimal => quote! { String },
         ScalarType::Int => quote! { i32 },
@@ -54,20 +61,26 @@ fn scalar_to_tokens(scalar: &ScalarType) -> TokenStream {
     }
 }
 
+fn is_db_bigint(db_type: Option<&(String, Vec<String>)>) -> bool {
+    db_type.is_some_and(|(ty, _)| ty == "BigInt")
+}
+
 /// Returns the filter type name for a field type.
 #[must_use]
 pub fn filter_type_tokens(field: &Field, depth: ModuleDepth) -> Option<TokenStream> {
     match &field.field_type {
         FieldKind::Scalar(scalar) => {
+            // `@db.BigInt` promotes `Int` to `BigInt` at the filter layer too.
+            let effective =
+                if matches!(scalar, ScalarType::Int) && is_db_bigint(field.db_type.as_ref()) {
+                    ScalarType::BigInt
+                } else {
+                    scalar.clone()
+                };
             if field.is_optional {
-                match scalar {
-                    ScalarType::String => {
-                        Some(quote! { ferriorm_runtime::filter::NullableStringFilter })
-                    }
-                    _ => scalar_filter_type(scalar),
-                }
+                nullable_scalar_filter_type(&effective)
             } else {
-                scalar_filter_type(scalar)
+                scalar_filter_type(&effective)
             }
         }
         FieldKind::Enum(name) => {
@@ -86,6 +99,19 @@ fn scalar_filter_type(scalar: &ScalarType) -> Option<TokenStream> {
         ScalarType::Float => quote! { ferriorm_runtime::filter::FloatFilter },
         ScalarType::Boolean => quote! { ferriorm_runtime::filter::BoolFilter },
         ScalarType::DateTime => quote! { ferriorm_runtime::filter::DateTimeFilter },
+        ScalarType::Json | ScalarType::Bytes | ScalarType::Decimal => return None,
+    };
+    Some(tokens)
+}
+
+fn nullable_scalar_filter_type(scalar: &ScalarType) -> Option<TokenStream> {
+    let tokens = match scalar {
+        ScalarType::String => quote! { ferriorm_runtime::filter::NullableStringFilter },
+        ScalarType::Int => quote! { ferriorm_runtime::filter::NullableIntFilter },
+        ScalarType::BigInt => quote! { ferriorm_runtime::filter::NullableBigIntFilter },
+        ScalarType::Float => quote! { ferriorm_runtime::filter::NullableFloatFilter },
+        ScalarType::Boolean => quote! { ferriorm_runtime::filter::NullableBoolFilter },
+        ScalarType::DateTime => quote! { ferriorm_runtime::filter::NullableDateTimeFilter },
         ScalarType::Json | ScalarType::Bytes | ScalarType::Decimal => return None,
     };
     Some(tokens)

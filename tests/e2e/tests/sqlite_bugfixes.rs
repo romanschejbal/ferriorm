@@ -69,6 +69,7 @@ fn make_field(name: &str, scalar: ScalarType, is_id: bool) -> Field {
         is_updated_at: false,
         default: None,
         relation: None,
+        db_type: None,
     }
 }
 
@@ -99,6 +100,7 @@ fn make_fk_field(
             on_delete,
             on_update,
         }),
+        db_type: None,
     }
 }
 

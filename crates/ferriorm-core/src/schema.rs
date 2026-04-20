@@ -97,6 +97,9 @@ serde_derive! {
         pub is_updated_at: bool,
         pub default: Option<DefaultValue>,
         pub relation: Option<ResolvedRelation>,
+        /// `@db.*` type hint, e.g. `BigInt` for `@db.BigInt`.
+        /// Tuple is `(type_name, args)` matching `FieldAttribute::DbType`.
+        pub db_type: Option<(String, Vec<String>)>,
     }
 }
 
