@@ -583,7 +583,10 @@ model PendingDraft {
         .unwrap_or_else(|e| panic!("Generated pending_draft.rs should be valid Rust: {e}"));
 
     // Normalize whitespace because prettyplease wraps long macro bodies across lines.
-    let normalized: String = draft_content.split_whitespace().collect::<Vec<_>>().join(" ");
+    let normalized: String = draft_content
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
 
     // The buggy pattern: `unwrap_or_else(|| 0i32)` binding a literal 0 for the id column.
     assert!(
