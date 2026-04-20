@@ -1132,13 +1132,26 @@ fn gen_insert_code(model: &Model, scalar_fields: &[&Field], table_name: &str) ->
     for f in &optional {
         let db_name = &f.db_name;
         let field_ident = format_ident!("{}", to_snake_case(&f.name));
-        let default_expr = gen_default_expr(f, &f.field_type);
-
-        col_pushes.push(quote! { cols.push(#db_name); });
-        val_pushes.push(quote! {
-            let val = self.data.#field_ident.unwrap_or_else(|| #default_expr);
-            sep.push_bind(val);
-        });
+        if is_autoincrement(f) {
+            // Autoincrement: if caller passed None, omit the column entirely
+            // so the DB assigns the next sequence value. Binding a literal 0
+            // would collide on the second insert.
+            col_pushes.push(quote! {
+                if self.data.#field_ident.is_some() { cols.push(#db_name); }
+            });
+            val_pushes.push(quote! {
+                if let Some(val) = self.data.#field_ident {
+                    sep.push_bind(val);
+                }
+            });
+        } else {
+            let default_expr = gen_default_expr(f, &f.field_type);
+            col_pushes.push(quote! { cols.push(#db_name); });
+            val_pushes.push(quote! {
+                let val = self.data.#field_ident.unwrap_or_else(|| #default_expr);
+                sep.push_bind(val);
+            });
+        }
     }
 
     // @updatedAt fields
@@ -1223,12 +1236,23 @@ fn gen_insert_ignore_code(
     for f in &optional {
         let db_name = &f.db_name;
         let field_ident = format_ident!("{}", to_snake_case(&f.name));
-        let default_expr = gen_default_expr(f, &f.field_type);
-        col_pushes.push(quote! { cols.push(#db_name); });
-        val_pushes.push(quote! {
-            let val = self.data.#field_ident.unwrap_or_else(|| #default_expr);
-            sep.push_bind(val);
-        });
+        if is_autoincrement(f) {
+            col_pushes.push(quote! {
+                if self.data.#field_ident.is_some() { cols.push(#db_name); }
+            });
+            val_pushes.push(quote! {
+                if let Some(val) = self.data.#field_ident {
+                    sep.push_bind(val);
+                }
+            });
+        } else {
+            let default_expr = gen_default_expr(f, &f.field_type);
+            col_pushes.push(quote! { cols.push(#db_name); });
+            val_pushes.push(quote! {
+                let val = self.data.#field_ident.unwrap_or_else(|| #default_expr);
+                sep.push_bind(val);
+            });
+        }
     }
     for f in &updated_at {
         let db_name = &f.db_name;
@@ -1278,6 +1302,16 @@ fn gen_insert_ignore_code(
     }
 }
 
+/// True if the field is declared with `@default(autoincrement())`.
+/// Such columns must be omitted from the INSERT when the caller passes `None`,
+/// otherwise we'd bind a literal 0 and collide on the second insert.
+fn is_autoincrement(field: &Field) -> bool {
+    matches!(
+        field.default,
+        Some(ferriorm_core::ast::DefaultValue::AutoIncrement)
+    )
+}
+
 /// Generate a Rust expression for a field's @default value.
 fn gen_default_expr(field: &Field, field_type: &FieldKind) -> TokenStream {
     use ferriorm_core::ast::DefaultValue;
@@ -1287,7 +1321,11 @@ fn gen_default_expr(field: &Field, field_type: &FieldKind) -> TokenStream {
             quote! { uuid::Uuid::new_v4().to_string() }
         }
         Some(DefaultValue::Now) => quote! { chrono::Utc::now() },
-        Some(DefaultValue::AutoIncrement) => quote! { 0i32 }, // DB handles this
+        // Autoincrement is handled specially by the INSERT/UPSERT generators
+        // (see `is_autoincrement`): the column is omitted when the caller passes
+        // `None`, so this arm is unreachable in practice. It stays as a safe
+        // fallback only for match exhaustiveness.
+        Some(DefaultValue::AutoIncrement) => quote! { 0i32 },
         Some(DefaultValue::Literal(lit)) => {
             use ferriorm_core::ast::LiteralValue;
             match lit {
@@ -1620,12 +1658,23 @@ fn gen_upsert_code(_model: &Model, scalar_fields: &[&Field], table_name: &str) -
     for f in &optional {
         let db_name = &f.db_name;
         let field_ident = format_ident!("{}", to_snake_case(&f.name));
-        let default_expr = gen_default_expr(f, &f.field_type);
-        col_pushes.push(quote! { cols.push(#db_name); });
-        val_pushes.push(quote! {
-            let val = self.create.#field_ident.unwrap_or_else(|| #default_expr);
-            sep.push_bind(val);
-        });
+        if is_autoincrement(f) {
+            col_pushes.push(quote! {
+                if self.create.#field_ident.is_some() { cols.push(#db_name); }
+            });
+            val_pushes.push(quote! {
+                if let Some(val) = self.create.#field_ident {
+                    sep.push_bind(val);
+                }
+            });
+        } else {
+            let default_expr = gen_default_expr(f, &f.field_type);
+            col_pushes.push(quote! { cols.push(#db_name); });
+            val_pushes.push(quote! {
+                let val = self.create.#field_ident.unwrap_or_else(|| #default_expr);
+                sep.push_bind(val);
+            });
+        }
     }
     for f in &updated_at {
         let db_name = &f.db_name;

@@ -541,3 +541,107 @@ model NumberingSequence {
         "Optional FK field should use filter_map for collecting IDs. Content:\n{invoice_content}"
     );
 }
+
+// ─── Autoincrement regression: id=None must omit the column, not bind 0 ─
+//
+// Previously the codegen emitted `self.data.id.unwrap_or_else(|| 0i32)` for
+// autoincrement PKs, which bound a literal 0 on every insert where the caller
+// passed `id: None`. The first row got id=0; the second collided on the PK.
+// The fix conditionally pushes both the column and the bind only when the
+// caller provided `Some(id)`, otherwise the DB assigns the next sequence value.
+
+#[test]
+fn autoincrement_pk_with_none_omits_column_from_insert() {
+    let schema_str = r#"
+datasource db {
+  provider = "sqlite"
+  url      = "sqlite::memory:"
+}
+
+generator client {
+  output = "./src/generated"
+}
+
+model PendingDraft {
+  id        Int    @id @default(autoincrement())
+  accountId String @map("account_id")
+
+  @@map("pending_drafts")
+}
+"#;
+    let schema =
+        ferriorm_parser::parse_and_validate(schema_str).expect("parse_and_validate should succeed");
+
+    let tmp_dir = tempfile::tempdir().expect("create temp dir");
+    let output_dir = tmp_dir.path().join("generated");
+
+    ferriorm_codegen::generator::generate(&schema, &output_dir)
+        .expect("code generation should succeed");
+
+    let draft_content = std::fs::read_to_string(output_dir.join("pending_draft.rs")).unwrap();
+    syn::parse_file(&draft_content)
+        .unwrap_or_else(|e| panic!("Generated pending_draft.rs should be valid Rust: {e}"));
+
+    // Normalize whitespace because prettyplease wraps long macro bodies across lines.
+    let normalized: String = draft_content.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    // The buggy pattern: `unwrap_or_else(|| 0i32)` binding a literal 0 for the id column.
+    assert!(
+        !normalized.contains("self.data.id.unwrap_or_else(|| 0i32)"),
+        "Autoincrement id must NOT bind a literal 0 on None. Content:\n{draft_content}"
+    );
+
+    // The fixed pattern: the id column is only pushed (and its bind only happens)
+    // when `self.data.id.is_some()` / `if let Some(val) = self.data.id`.
+    assert!(
+        normalized.contains("self.data.id.is_some()"),
+        "Autoincrement id column push should be gated on is_some(). Content:\n{draft_content}"
+    );
+    assert!(
+        normalized.contains("if let Some(val) = self.data.id"),
+        "Autoincrement id bind should be gated on `if let Some(val)`. Content:\n{draft_content}"
+    );
+}
+
+// End-to-end semantic check: apply the same SQL the fixed codegen produces
+// (INSERT without the `id` column) and verify two rows with `id: None` get
+// distinct, auto-assigned ids — the exact scenario the bug report described.
+#[tokio::test]
+async fn autoincrement_id_none_inserts_assign_distinct_ids_in_sqlite() {
+    use sqlx::{Row, SqlitePool};
+
+    let pool = SqlitePool::connect("sqlite::memory:")
+        .await
+        .expect("connect to in-memory SQLite");
+
+    sqlx::query(
+        r#"CREATE TABLE "pending_drafts" (
+            "id" INTEGER NOT NULL,
+            "account_id" TEXT NOT NULL,
+            PRIMARY KEY ("id")
+        )"#,
+    )
+    .execute(&pool)
+    .await
+    .expect("create pending_drafts");
+
+    // Two inserts that omit the id column entirely (mirrors the fixed codegen path
+    // when the caller passes id: None on an autoincrement PK).
+    for account in ["acc-1", "acc-2"] {
+        sqlx::query(r#"INSERT INTO "pending_drafts" ("account_id") VALUES (?)"#)
+            .bind(account)
+            .execute(&pool)
+            .await
+            .expect("insert should succeed — DB must assign a fresh id each time");
+    }
+
+    let rows = sqlx::query(r#"SELECT "id" FROM "pending_drafts" ORDER BY "id""#)
+        .fetch_all(&pool)
+        .await
+        .expect("select ids");
+
+    assert_eq!(rows.len(), 2, "both inserts must land as distinct rows");
+    let id0: i64 = rows[0].get("id");
+    let id1: i64 = rows[1].get("id");
+    assert_ne!(id0, id1, "autoincrement should produce distinct ids");
+}
