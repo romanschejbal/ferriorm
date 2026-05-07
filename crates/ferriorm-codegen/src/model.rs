@@ -17,7 +17,7 @@ use ferriorm_core::utils::{to_pascal_case, to_snake_case};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-use crate::rust_type::{ModuleDepth, filter_type_tokens, rust_type_tokens};
+use crate::rust_type::{ModuleDepth, enum_path, filter_type_tokens, rust_type_tokens};
 
 /// Generate the complete module for a single model.
 #[must_use]
@@ -130,7 +130,7 @@ fn gen_filter_module(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
         .collect();
 
     // Generate build_where for WhereInput
-    let db_bounds = collect_db_bounds(scalar_fields);
+    let db_bounds = collect_db_bounds(scalar_fields, ModuleDepth::Nested);
     let where_arms = gen_where_arms(scalar_fields);
     let unique_arms = gen_unique_where_arms(model, scalar_fields);
     let conflict_target_arms = gen_conflict_target_arms(model, scalar_fields);
@@ -222,8 +222,11 @@ fn gen_filter_module(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
 }
 
 /// Collect the sqlx type bounds needed for all scalar types used by the model.
-fn collect_db_bounds(scalar_fields: &[&Field]) -> Vec<TokenStream> {
+/// `depth` controls the module-path resolution for enum types (the only
+/// bounds that depend on where the `impl` block lives).
+fn collect_db_bounds(scalar_fields: &[&Field], depth: ModuleDepth) -> Vec<TokenStream> {
     let mut seen = std::collections::HashSet::new();
+    let mut seen_enums = std::collections::HashSet::new();
     let mut bounds = Vec::new();
 
     // Always need i64 for LIMIT/OFFSET
@@ -244,7 +247,15 @@ fn collect_db_bounds(scalar_fields: &[&Field]) -> Vec<TokenStream> {
                     );
                 }
             }
-            FieldKind::Enum(_) | FieldKind::Model(_) => {}
+            FieldKind::Enum(name) => {
+                // Enum WHERE arms call qb.push_bind on enum values, so the
+                // generated impl needs `EnumTy: sqlx::Type<DB> + Encode<DB>`.
+                if seen_enums.insert(name.clone()) {
+                    let enum_ty = enum_path(name, depth);
+                    bounds.push(quote! { #enum_ty: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB> });
+                }
+            }
+            FieldKind::Model(_) => {}
         }
     }
 
@@ -264,119 +275,197 @@ fn scalar_bound_tokens(scalar: &ScalarType) -> Option<TokenStream> {
     }
 }
 
-/// Generate where-clause arms for each filterable scalar field.
+/// Generate `IN (...)` / `NOT IN (...)` arms for `filter.r#in` and
+/// `filter.not_in`. `lhs` is the SQL expression on the left-hand side --
+/// a quoted column for `WhereInput` or an aggregate expression like
+/// `AVG("col")` for `HavingInput`. Empty `r#in` emits the portable
+/// `1 = 0` form (Postgres rejects bare `IN ()`); empty `not_in` is
+/// dropped (vacuously true).
+fn gen_in_arms_lhs(lhs: &str) -> TokenStream {
+    let in_prefix = format!(" AND {lhs} IN (");
+    let not_in_prefix = format!(" AND {lhs} NOT IN (");
+    quote! {
+        if let Some(values) = &filter.r#in {
+            if values.is_empty() {
+                qb.push(" AND 1 = 0");
+            } else {
+                qb.push(#in_prefix);
+                {
+                    let mut sep = qb.separated(", ");
+                    for v in values {
+                        sep.push_bind(v.clone());
+                    }
+                }
+                qb.push(")");
+            }
+        }
+        if let Some(values) = &filter.not_in {
+            if !values.is_empty() {
+                qb.push(#not_in_prefix);
+                {
+                    let mut sep = qb.separated(", ");
+                    for v in values {
+                        sep.push_bind(v.clone());
+                    }
+                }
+                qb.push(")");
+            }
+        }
+    }
+}
+
+/// Generate where-clause arms for each filterable scalar or enum field.
+#[allow(clippy::too_many_lines)]
 fn gen_where_arms(scalar_fields: &[&Field]) -> Vec<TokenStream> {
     scalar_fields
         .iter()
         .filter_map(|f| {
-            // Only generate filter arms for scalar types (skip enums for now)
-            if !matches!(&f.field_type, FieldKind::Scalar(_)) {
-                return None;
-            }
             let field_ident = format_ident!("{}", to_snake_case(&f.name));
             let db_name = &f.db_name;
-            let is_string = matches!(&f.field_type, FieldKind::Scalar(ScalarType::String));
-            let is_comparable = matches!(
-                &f.field_type,
-                FieldKind::Scalar(
-                    ScalarType::Int | ScalarType::BigInt | ScalarType::Float | ScalarType::DateTime
-                )
-            );
+            let column_lhs = format!("\"{db_name}\"");
 
-            let mut arms = vec![];
+            match &f.field_type {
+                FieldKind::Scalar(scalar) => {
+                    // Skip non-filterable scalars (Json/Bytes/Decimal); they
+                    // have no filter struct field, so there's nothing to bind.
+                    if matches!(
+                        scalar,
+                        ScalarType::Json | ScalarType::Bytes | ScalarType::Decimal
+                    ) {
+                        return None;
+                    }
+                    let is_string = matches!(scalar, ScalarType::String);
+                    let is_comparable = matches!(
+                        scalar,
+                        ScalarType::Int
+                            | ScalarType::BigInt
+                            | ScalarType::Float
+                            | ScalarType::DateTime
+                    );
+                    // BoolFilter has no `r#in`/`not_in` -- IN over booleans is
+                    // not useful.
+                    let supports_in = !matches!(scalar, ScalarType::Boolean);
 
-            if f.is_optional {
-                // Nullable filter: `equals`/`not` are `Option<Option<T>>`.
-                // `Some(None)` means IS NULL / IS NOT NULL; `Some(Some(v))`
-                // is the ordinary `= ?` / `!= ?` comparison.
-                arms.push(quote! {
-                    if let Some(v) = &filter.equals {
-                        match v {
-                            None => {
-                                qb.push(concat!(" AND \"", #db_name, "\" IS NULL"));
+                    let mut arms: Vec<TokenStream> = Vec::new();
+
+                    if f.is_optional {
+                        // Nullable filter: `equals`/`not` are `Option<Option<T>>`.
+                        // `Some(None)` means IS NULL / IS NOT NULL; `Some(Some(v))`
+                        // is the ordinary `= ?` / `!= ?` comparison.
+                        arms.push(quote! {
+                            if let Some(v) = &filter.equals {
+                                match v {
+                                    None => {
+                                        qb.push(concat!(" AND \"", #db_name, "\" IS NULL"));
+                                    }
+                                    Some(inner) => {
+                                        qb.push(concat!(" AND \"", #db_name, "\" = "));
+                                        qb.push_bind(inner.clone());
+                                    }
+                                }
                             }
-                            Some(inner) => {
+                            if let Some(v) = &filter.not {
+                                match v {
+                                    None => {
+                                        qb.push(concat!(" AND \"", #db_name, "\" IS NOT NULL"));
+                                    }
+                                    Some(inner) => {
+                                        qb.push(concat!(" AND \"", #db_name, "\" != "));
+                                        qb.push_bind(inner.clone());
+                                    }
+                                }
+                            }
+                        });
+                    } else {
+                        arms.push(quote! {
+                            if let Some(v) = &filter.equals {
                                 qb.push(concat!(" AND \"", #db_name, "\" = "));
-                                qb.push_bind(inner.clone());
+                                qb.push_bind(v.clone());
                             }
-                        }
-                    }
-                    if let Some(v) = &filter.not {
-                        match v {
-                            None => {
-                                qb.push(concat!(" AND \"", #db_name, "\" IS NOT NULL"));
-                            }
-                            Some(inner) => {
+                            if let Some(v) = &filter.not {
                                 qb.push(concat!(" AND \"", #db_name, "\" != "));
-                                qb.push_bind(inner.clone());
+                                qb.push_bind(v.clone());
                             }
+                        });
+                    }
+
+                    if is_string {
+                        // `like_escape` quotes %, _, and \ in user input so they
+                        // match themselves; `ESCAPE '\\'` tells the DB to treat
+                        // backslash as the escape character. Without this the
+                        // query `contains: "100%_safe"` would also match
+                        // arbitrary strings like `100Xsafe`.
+                        arms.push(quote! {
+                            if let Some(v) = &filter.contains {
+                                qb.push(concat!(" AND \"", #db_name, "\" LIKE "));
+                                qb.push_bind(format!("%{}%", ferriorm_runtime::filter::like_escape(v)));
+                                qb.push(" ESCAPE '\\'");
+                            }
+                            if let Some(v) = &filter.starts_with {
+                                qb.push(concat!(" AND \"", #db_name, "\" LIKE "));
+                                qb.push_bind(format!("{}%", ferriorm_runtime::filter::like_escape(v)));
+                                qb.push(" ESCAPE '\\'");
+                            }
+                            if let Some(v) = &filter.ends_with {
+                                qb.push(concat!(" AND \"", #db_name, "\" LIKE "));
+                                qb.push_bind(format!("%{}", ferriorm_runtime::filter::like_escape(v)));
+                                qb.push(" ESCAPE '\\'");
+                            }
+                        });
+                    }
+
+                    if is_comparable {
+                        arms.push(quote! {
+                            if let Some(v) = &filter.gt {
+                                qb.push(concat!(" AND \"", #db_name, "\" > "));
+                                qb.push_bind(v.clone());
+                            }
+                            if let Some(v) = &filter.gte {
+                                qb.push(concat!(" AND \"", #db_name, "\" >= "));
+                                qb.push_bind(v.clone());
+                            }
+                            if let Some(v) = &filter.lt {
+                                qb.push(concat!(" AND \"", #db_name, "\" < "));
+                                qb.push_bind(v.clone());
+                            }
+                            if let Some(v) = &filter.lte {
+                                qb.push(concat!(" AND \"", #db_name, "\" <= "));
+                                qb.push_bind(v.clone());
+                            }
+                        });
+                    }
+
+                    if supports_in {
+                        arms.push(gen_in_arms_lhs(&column_lhs));
+                    }
+
+                    Some(quote! {
+                        if let Some(filter) = &self.#field_ident {
+                            #(#arms)*
                         }
-                    }
-                });
-            } else {
-                arms.push(quote! {
-                    if let Some(v) = &filter.equals {
-                        qb.push(concat!(" AND \"", #db_name, "\" = "));
-                        qb.push_bind(v.clone());
-                    }
-                    if let Some(v) = &filter.not {
-                        qb.push(concat!(" AND \"", #db_name, "\" != "));
-                        qb.push_bind(v.clone());
-                    }
-                });
-            }
-
-            if is_string {
-                // `like_escape` quotes %, _, and \ in user input so they
-                // match themselves; `ESCAPE '\\'` tells the DB to treat
-                // backslash as the escape character. Without this the
-                // query `contains: "100%_safe"` would also match
-                // arbitrary strings like `100Xsafe`.
-                arms.push(quote! {
-                    if let Some(v) = &filter.contains {
-                        qb.push(concat!(" AND \"", #db_name, "\" LIKE "));
-                        qb.push_bind(format!("%{}%", ferriorm_runtime::filter::like_escape(v)));
-                        qb.push(" ESCAPE '\\'");
-                    }
-                    if let Some(v) = &filter.starts_with {
-                        qb.push(concat!(" AND \"", #db_name, "\" LIKE "));
-                        qb.push_bind(format!("{}%", ferriorm_runtime::filter::like_escape(v)));
-                        qb.push(" ESCAPE '\\'");
-                    }
-                    if let Some(v) = &filter.ends_with {
-                        qb.push(concat!(" AND \"", #db_name, "\" LIKE "));
-                        qb.push_bind(format!("%{}", ferriorm_runtime::filter::like_escape(v)));
-                        qb.push(" ESCAPE '\\'");
-                    }
-                });
-            }
-
-            if is_comparable {
-                arms.push(quote! {
-                    if let Some(v) = &filter.gt {
-                        qb.push(concat!(" AND \"", #db_name, "\" > "));
-                        qb.push_bind(v.clone());
-                    }
-                    if let Some(v) = &filter.gte {
-                        qb.push(concat!(" AND \"", #db_name, "\" >= "));
-                        qb.push_bind(v.clone());
-                    }
-                    if let Some(v) = &filter.lt {
-                        qb.push(concat!(" AND \"", #db_name, "\" < "));
-                        qb.push_bind(v.clone());
-                    }
-                    if let Some(v) = &filter.lte {
-                        qb.push(concat!(" AND \"", #db_name, "\" <= "));
-                        qb.push_bind(v.clone());
-                    }
-                });
-            }
-
-            Some(quote! {
-                if let Some(filter) = &self.#field_ident {
-                    #(#arms)*
+                    })
                 }
-            })
+                FieldKind::Enum(_) => {
+                    // EnumFilter exposes equals/not/in/not_in. There is no
+                    // NullableEnumFilter, so IS NULL handling on optional
+                    // enums is not yet supported here.
+                    let in_arms = gen_in_arms_lhs(&column_lhs);
+                    Some(quote! {
+                        if let Some(filter) = &self.#field_ident {
+                            if let Some(v) = &filter.equals {
+                                qb.push(concat!(" AND \"", #db_name, "\" = "));
+                                qb.push_bind(v.clone());
+                            }
+                            if let Some(v) = &filter.not {
+                                qb.push(concat!(" AND \"", #db_name, "\" != "));
+                                qb.push_bind(v.clone());
+                            }
+                            #in_arms
+                        }
+                    })
+                }
+                FieldKind::Model(_) => None,
+            }
         })
         .collect()
 }
@@ -746,7 +835,7 @@ fn gen_query_builders(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
     let _partial_struct = format_ident!("{}Partial", model.name);
     let _aggregate_result = format_ident!("{}AggregateResult", model.name);
     let _aggregate_field = format_ident!("{}AggregateField", model.name);
-    let db_bounds = collect_db_bounds(scalar_fields);
+    let db_bounds = collect_db_bounds(scalar_fields, ModuleDepth::TopLevel);
 
     let select_sql = format!(r#"SELECT * FROM "{table_name}" WHERE 1=1"#);
     let count_sql = format!(r#"SELECT COUNT(*) as "count" FROM "{table_name}" WHERE 1=1"#);
@@ -2022,9 +2111,10 @@ fn gen_aggregate_types(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
 
 // ─── GroupBy Types ────────────────────────────────────────────
 
-/// Generate the six standard-comparable HAVING arms (`equals`/`not`/`gt`/
-/// `gte`/`lt`/`lte`) for one aggregate field. `lhs` is the SQL expression on
-/// the left-hand side of the operator (e.g. `AVG("age")`, `MIN("created_at")`).
+/// Generate the standard-comparable HAVING arms (`equals`/`not`/`gt`/
+/// `gte`/`lt`/`lte`/`in`/`not_in`) for one aggregate field. `lhs` is the
+/// SQL expression on the left-hand side of the operator (e.g. `AVG("age")`,
+/// `MIN("created_at")`).
 fn gen_having_comparable_arms(field_ident: &proc_macro2::Ident, lhs: &str) -> TokenStream {
     let eq = format!(" AND {lhs} = ");
     let ne = format!(" AND {lhs} != ");
@@ -2032,6 +2122,7 @@ fn gen_having_comparable_arms(field_ident: &proc_macro2::Ident, lhs: &str) -> To
     let gte = format!(" AND {lhs} >= ");
     let lt = format!(" AND {lhs} < ");
     let lte = format!(" AND {lhs} <= ");
+    let in_arms = gen_in_arms_lhs(lhs);
     quote! {
         if let Some(filter) = &self.#field_ident {
             if let Some(v) = &filter.equals { qb.push(#eq); qb.push_bind(v.clone()); }
@@ -2040,6 +2131,7 @@ fn gen_having_comparable_arms(field_ident: &proc_macro2::Ident, lhs: &str) -> To
             if let Some(v) = &filter.gte    { qb.push(#gte); qb.push_bind(v.clone()); }
             if let Some(v) = &filter.lt     { qb.push(#lt); qb.push_bind(v.clone()); }
             if let Some(v) = &filter.lte    { qb.push(#lte); qb.push_bind(v.clone()); }
+            #in_arms
         }
     }
 }
@@ -2214,7 +2306,9 @@ fn gen_groupby_types(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
     // Aggregate results are never NULL semantically except for empty inputs,
     // so we don't need IS NULL handling here.
     let mut having_arms: Vec<TokenStream> = Vec::new();
-    // count: BigIntFilter on COUNT(*)
+    // count: BigIntFilter on COUNT(*) -- mirrors the comparable HAVING arms,
+    // including `r#in`/`not_in` for `WHERE COUNT(*) IN (...)` semantics.
+    let count_in_arms = gen_in_arms_lhs("COUNT(*)");
     having_arms.push(quote! {
         if let Some(filter) = &self.count {
             if let Some(v) = &filter.equals { qb.push(" AND COUNT(*) = "); qb.push_bind(*v); }
@@ -2223,6 +2317,7 @@ fn gen_groupby_types(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
             if let Some(v) = &filter.gte    { qb.push(" AND COUNT(*) >= "); qb.push_bind(*v); }
             if let Some(v) = &filter.lt     { qb.push(" AND COUNT(*) < "); qb.push_bind(*v); }
             if let Some(v) = &filter.lte    { qb.push(" AND COUNT(*) <= "); qb.push_bind(*v); }
+            #count_in_arms
         }
     });
 
@@ -2257,7 +2352,7 @@ fn gen_groupby_types(model: &Model, scalar_fields: &[&Field]) -> TokenStream {
     // `COUNT(*) op ?` (always i64) regardless of which scalar types appear
     // in the model. Reuse collect_db_bounds for the column-type bounds
     // (needed by min/max filters), then top up with f64.
-    let mut db_bounds = collect_db_bounds(scalar_fields);
+    let mut db_bounds = collect_db_bounds(scalar_fields, ModuleDepth::TopLevel);
     if !scalar_fields
         .iter()
         .any(|f| matches!(&f.field_type, FieldKind::Scalar(ScalarType::Float)))

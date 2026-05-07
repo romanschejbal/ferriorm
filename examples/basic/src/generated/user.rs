@@ -56,6 +56,7 @@ pub mod filter {
             i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            super::super::enums::Role: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<
                 chrono::DateTime<chrono::Utc>,
@@ -91,6 +92,32 @@ pub mod filter {
                     );
                     qb.push(" ESCAPE '\\'");
                 }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"id\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"id\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
             }
             if let Some(filter) = &self.email {
                 if let Some(v) = &filter.equals {
@@ -121,6 +148,32 @@ pub mod filter {
                         format!("%{}", ferriorm_runtime::filter::like_escape(v)),
                     );
                     qb.push(" ESCAPE '\\'");
+                }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"email\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"email\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
                 }
             }
             if let Some(filter) = &self.name {
@@ -167,6 +220,68 @@ pub mod filter {
                     );
                     qb.push(" ESCAPE '\\'");
                 }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"name\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"name\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+            }
+            if let Some(filter) = &self.role {
+                if let Some(v) = &filter.equals {
+                    qb.push(concat!(" AND \"", "role", "\" = "));
+                    qb.push_bind(v.clone());
+                }
+                if let Some(v) = &filter.not {
+                    qb.push(concat!(" AND \"", "role", "\" != "));
+                    qb.push_bind(v.clone());
+                }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"role\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"role\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
             }
             if let Some(filter) = &self.created_at {
                 if let Some(v) = &filter.equals {
@@ -193,6 +308,32 @@ pub mod filter {
                     qb.push(concat!(" AND \"", "created_at", "\" <= "));
                     qb.push_bind(v.clone());
                 }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"created_at\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"created_at\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
             }
             if let Some(filter) = &self.updated_at {
                 if let Some(v) = &filter.equals {
@@ -218,6 +359,32 @@ pub mod filter {
                 if let Some(v) = &filter.lte {
                     qb.push(concat!(" AND \"", "updated_at", "\" <= "));
                     qb.push_bind(v.clone());
+                }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"updated_at\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"updated_at\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
                 }
             }
             if let Some(conditions) = &self.and {
@@ -255,6 +422,7 @@ pub mod filter {
             i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            super::super::enums::Role: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<
                 chrono::DateTime<chrono::Utc>,
@@ -509,6 +677,7 @@ where
     i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    super::enums::Role: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
@@ -533,6 +702,7 @@ where
     i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    super::enums::Role: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
@@ -549,6 +719,7 @@ where
     i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    super::enums::Role: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
@@ -565,6 +736,7 @@ where
     i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    super::enums::Role: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
@@ -580,6 +752,7 @@ where
     i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    super::enums::Role: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<chrono::DateTime<chrono::Utc>>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
 {
@@ -1253,6 +1426,7 @@ impl UserHavingInput {
         i64: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         String: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+        super::enums::Role: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         Option<
             chrono::DateTime<chrono::Utc>,
@@ -1284,6 +1458,32 @@ impl UserHavingInput {
                 qb.push(" AND COUNT(*) <= ");
                 qb.push_bind(*v);
             }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND COUNT(*) IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND COUNT(*) NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
         }
         if let Some(filter) = &self.min_created_at {
             if let Some(v) = &filter.equals {
@@ -1309,6 +1509,32 @@ impl UserHavingInput {
             if let Some(v) = &filter.lte {
                 qb.push(" AND MIN(\"created_at\") <= ");
                 qb.push_bind(v.clone());
+            }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND MIN(\"created_at\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND MIN(\"created_at\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
             }
         }
         if let Some(filter) = &self.max_created_at {
@@ -1336,6 +1562,32 @@ impl UserHavingInput {
                 qb.push(" AND MAX(\"created_at\") <= ");
                 qb.push_bind(v.clone());
             }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND MAX(\"created_at\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND MAX(\"created_at\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
         }
         if let Some(filter) = &self.min_updated_at {
             if let Some(v) = &filter.equals {
@@ -1362,6 +1614,32 @@ impl UserHavingInput {
                 qb.push(" AND MIN(\"updated_at\") <= ");
                 qb.push_bind(v.clone());
             }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND MIN(\"updated_at\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND MIN(\"updated_at\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
         }
         if let Some(filter) = &self.max_updated_at {
             if let Some(v) = &filter.equals {
@@ -1387,6 +1665,32 @@ impl UserHavingInput {
             if let Some(v) = &filter.lte {
                 qb.push(" AND MAX(\"updated_at\") <= ");
                 qb.push_bind(v.clone());
+            }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND MAX(\"updated_at\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND MAX(\"updated_at\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
             }
         }
         if let Some(conditions) = &self.and {

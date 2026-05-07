@@ -50,6 +50,15 @@ StringFilter { r#in: Some(vec!["a@ex.com".into(), "b@ex.com".into()]), ..Default
 StringFilter { not_in: Some(vec!["spam@ex.com".into()]), ..Default::default() }
 ```
 
+### `IN` / `NOT IN` semantics
+
+`r#in` and `not_in` map to SQL `IN (...)` / `NOT IN (...)`. They share these rules across every filter that supports them (`StringFilter`, `IntFilter`, `BigIntFilter`, `FloatFilter`, `DateTimeFilter`, their nullable variants, and `EnumFilter`):
+
+- **Empty `r#in`** (`Some(vec![])`) matches **no rows** — codegen emits `WHERE 1 = 0` so the query stays portable across SQLite and Postgres (Postgres rejects bare `IN ()`).
+- **Empty `not_in`** (`Some(vec![])`) is dropped — `NOT IN` over an empty set is vacuously true, so the predicate isn't applied.
+- **`None`** leaves the operator unset (no fragment emitted), same as every other filter field.
+- **NULL columns**: per standard SQL, `IN` and `NOT IN` do **not** match NULL values. To include NULLs, compose with `equals: Some(None)` on a nullable filter (or wrap the IN inside an `or:`).
+
 ### Case-Insensitive Mode
 
 Set `mode: Some(QueryMode::Insensitive)` for case-insensitive string matching:
@@ -142,7 +151,7 @@ For `BigInt` (`i64`) fields. Same operators as `IntFilter`.
 
 ## FloatFilter
 
-For `Float` (`f64`) fields. Supports `equals`, `not`, `gt`, `gte`, `lt`, `lte`.
+For `Float` (`f64`) fields. Supports `equals`, `not`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`.
 
 ## BoolFilter
 
@@ -183,9 +192,12 @@ DateTimeFilter { equals: Some(some_datetime), ..Default::default() }
 
 // In a list
 DateTimeFilter { r#in: Some(vec![date1, date2]), ..Default::default() }
+
+// Not in a list
+DateTimeFilter { not_in: Some(vec![date_to_skip]), ..Default::default() }
 ```
 
-Supported operators: `equals`, `not`, `gt`, `gte`, `lt`, `lte`, `in`.
+Supported operators: `equals`, `not`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`.
 
 ## EnumFilter
 

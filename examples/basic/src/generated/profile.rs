@@ -87,6 +87,32 @@ pub mod filter {
                     );
                     qb.push(" ESCAPE '\\'");
                 }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"id\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"id\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
             }
             if let Some(filter) = &self.bio {
                 if let Some(v) = &filter.equals {
@@ -131,6 +157,32 @@ pub mod filter {
                         format!("%{}", ferriorm_runtime::filter::like_escape(v)),
                     );
                     qb.push(" ESCAPE '\\'");
+                }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"bio\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"bio\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
                 }
             }
             if let Some(filter) = &self.avatar {
@@ -177,6 +229,32 @@ pub mod filter {
                     );
                     qb.push(" ESCAPE '\\'");
                 }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"avatar\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"avatar\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
             }
             if let Some(filter) = &self.disconnected_at {
                 if let Some(v) = &filter.equals {
@@ -219,6 +297,32 @@ pub mod filter {
                     qb.push(concat!(" AND \"", "disconnected_at", "\" <= "));
                     qb.push_bind(v.clone());
                 }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"disconnected_at\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"disconnected_at\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
             }
             if let Some(filter) = &self.user_id {
                 if let Some(v) = &filter.equals {
@@ -249,6 +353,32 @@ pub mod filter {
                         format!("%{}", ferriorm_runtime::filter::like_escape(v)),
                     );
                     qb.push(" ESCAPE '\\'");
+                }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"user_id\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"user_id\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
                 }
             }
             if let Some(conditions) = &self.and {
@@ -1281,6 +1411,32 @@ impl ProfileHavingInput {
                 qb.push(" AND COUNT(*) <= ");
                 qb.push_bind(*v);
             }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND COUNT(*) IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND COUNT(*) NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
         }
         if let Some(filter) = &self.min_disconnected_at {
             if let Some(v) = &filter.equals {
@@ -1307,6 +1463,32 @@ impl ProfileHavingInput {
                 qb.push(" AND MIN(\"disconnected_at\") <= ");
                 qb.push_bind(v.clone());
             }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND MIN(\"disconnected_at\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND MIN(\"disconnected_at\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
         }
         if let Some(filter) = &self.max_disconnected_at {
             if let Some(v) = &filter.equals {
@@ -1332,6 +1514,32 @@ impl ProfileHavingInput {
             if let Some(v) = &filter.lte {
                 qb.push(" AND MAX(\"disconnected_at\") <= ");
                 qb.push_bind(v.clone());
+            }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND MAX(\"disconnected_at\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND MAX(\"disconnected_at\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
             }
         }
         if let Some(conditions) = &self.and {

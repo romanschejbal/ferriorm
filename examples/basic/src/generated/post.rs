@@ -64,6 +64,8 @@ pub mod filter {
             Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            super::super::enums::PostStatus: sqlx::Type<DB>
+                + for<'e> sqlx::Encode<'e, DB>,
             i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
@@ -101,6 +103,32 @@ pub mod filter {
                     );
                     qb.push(" ESCAPE '\\'");
                 }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"id\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"id\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
             }
             if let Some(filter) = &self.title {
                 if let Some(v) = &filter.equals {
@@ -131,6 +159,32 @@ pub mod filter {
                         format!("%{}", ferriorm_runtime::filter::like_escape(v)),
                     );
                     qb.push(" ESCAPE '\\'");
+                }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"title\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"title\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
                 }
             }
             if let Some(filter) = &self.content {
@@ -177,6 +231,32 @@ pub mod filter {
                     );
                     qb.push(" ESCAPE '\\'");
                 }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"content\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"content\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
             }
             if let Some(filter) = &self.published {
                 if let Some(v) = &filter.equals {
@@ -186,6 +266,42 @@ pub mod filter {
                 if let Some(v) = &filter.not {
                     qb.push(concat!(" AND \"", "published", "\" != "));
                     qb.push_bind(v.clone());
+                }
+            }
+            if let Some(filter) = &self.status {
+                if let Some(v) = &filter.equals {
+                    qb.push(concat!(" AND \"", "status", "\" = "));
+                    qb.push_bind(v.clone());
+                }
+                if let Some(v) = &filter.not {
+                    qb.push(concat!(" AND \"", "status", "\" != "));
+                    qb.push_bind(v.clone());
+                }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"status\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"status\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
                 }
             }
             if let Some(filter) = &self.view_count {
@@ -212,6 +328,32 @@ pub mod filter {
                 if let Some(v) = &filter.lte {
                     qb.push(concat!(" AND \"", "view_count", "\" <= "));
                     qb.push_bind(v.clone());
+                }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"view_count\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"view_count\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
                 }
             }
             if let Some(filter) = &self.author_id {
@@ -244,6 +386,32 @@ pub mod filter {
                     );
                     qb.push(" ESCAPE '\\'");
                 }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"author_id\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"author_id\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
             }
             if let Some(filter) = &self.created_at {
                 if let Some(v) = &filter.equals {
@@ -270,6 +438,32 @@ pub mod filter {
                     qb.push(concat!(" AND \"", "created_at", "\" <= "));
                     qb.push_bind(v.clone());
                 }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"created_at\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"created_at\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
             }
             if let Some(filter) = &self.updated_at {
                 if let Some(v) = &filter.equals {
@@ -295,6 +489,32 @@ pub mod filter {
                 if let Some(v) = &filter.lte {
                     qb.push(concat!(" AND \"", "updated_at", "\" <= "));
                     qb.push_bind(v.clone());
+                }
+                if let Some(values) = &filter.r#in {
+                    if values.is_empty() {
+                        qb.push(" AND 1 = 0");
+                    } else {
+                        qb.push(" AND \"updated_at\" IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
+                }
+                if let Some(values) = &filter.not_in {
+                    if !values.is_empty() {
+                        qb.push(" AND \"updated_at\" NOT IN (");
+                        {
+                            let mut sep = qb.separated(", ");
+                            for v in values {
+                                sep.push_bind(v.clone());
+                            }
+                        }
+                        qb.push(")");
+                    }
                 }
             }
             if let Some(conditions) = &self.and {
@@ -334,6 +554,8 @@ pub mod filter {
             Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+            super::super::enums::PostStatus: sqlx::Type<DB>
+                + for<'e> sqlx::Encode<'e, DB>,
             i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
             chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
@@ -615,6 +837,7 @@ where
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    super::enums::PostStatus: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
@@ -643,6 +866,7 @@ where
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    super::enums::PostStatus: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
@@ -663,6 +887,7 @@ where
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    super::enums::PostStatus: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
@@ -683,6 +908,7 @@ where
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    super::enums::PostStatus: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
@@ -702,6 +928,7 @@ where
     Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+    super::enums::PostStatus: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
     chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
@@ -1466,6 +1693,7 @@ impl PostHavingInput {
         Option<String>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         bool: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         Option<bool>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
+        super::enums::PostStatus: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         i32: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         Option<i32>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
         chrono::DateTime<chrono::Utc>: sqlx::Type<DB> + for<'e> sqlx::Encode<'e, DB>,
@@ -1499,6 +1727,32 @@ impl PostHavingInput {
                 qb.push(" AND COUNT(*) <= ");
                 qb.push_bind(*v);
             }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND COUNT(*) IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND COUNT(*) NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
         }
         if let Some(filter) = &self.avg_view_count {
             if let Some(v) = &filter.equals {
@@ -1524,6 +1778,32 @@ impl PostHavingInput {
             if let Some(v) = &filter.lte {
                 qb.push(" AND AVG(\"view_count\") <= ");
                 qb.push_bind(v.clone());
+            }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND AVG(\"view_count\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND AVG(\"view_count\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
             }
         }
         if let Some(filter) = &self.sum_view_count {
@@ -1551,6 +1831,32 @@ impl PostHavingInput {
                 qb.push(" AND SUM(\"view_count\") <= ");
                 qb.push_bind(v.clone());
             }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND SUM(\"view_count\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND SUM(\"view_count\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
         }
         if let Some(filter) = &self.min_view_count {
             if let Some(v) = &filter.equals {
@@ -1576,6 +1882,32 @@ impl PostHavingInput {
             if let Some(v) = &filter.lte {
                 qb.push(" AND MIN(\"view_count\") <= ");
                 qb.push_bind(v.clone());
+            }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND MIN(\"view_count\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND MIN(\"view_count\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
             }
         }
         if let Some(filter) = &self.max_view_count {
@@ -1603,6 +1935,32 @@ impl PostHavingInput {
                 qb.push(" AND MAX(\"view_count\") <= ");
                 qb.push_bind(v.clone());
             }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND MAX(\"view_count\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND MAX(\"view_count\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
         }
         if let Some(filter) = &self.min_created_at {
             if let Some(v) = &filter.equals {
@@ -1628,6 +1986,32 @@ impl PostHavingInput {
             if let Some(v) = &filter.lte {
                 qb.push(" AND MIN(\"created_at\") <= ");
                 qb.push_bind(v.clone());
+            }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND MIN(\"created_at\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND MIN(\"created_at\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
             }
         }
         if let Some(filter) = &self.max_created_at {
@@ -1655,6 +2039,32 @@ impl PostHavingInput {
                 qb.push(" AND MAX(\"created_at\") <= ");
                 qb.push_bind(v.clone());
             }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND MAX(\"created_at\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND MAX(\"created_at\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
         }
         if let Some(filter) = &self.min_updated_at {
             if let Some(v) = &filter.equals {
@@ -1681,6 +2091,32 @@ impl PostHavingInput {
                 qb.push(" AND MIN(\"updated_at\") <= ");
                 qb.push_bind(v.clone());
             }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND MIN(\"updated_at\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND MIN(\"updated_at\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
         }
         if let Some(filter) = &self.max_updated_at {
             if let Some(v) = &filter.equals {
@@ -1706,6 +2142,32 @@ impl PostHavingInput {
             if let Some(v) = &filter.lte {
                 qb.push(" AND MAX(\"updated_at\") <= ");
                 qb.push_bind(v.clone());
+            }
+            if let Some(values) = &filter.r#in {
+                if values.is_empty() {
+                    qb.push(" AND 1 = 0");
+                } else {
+                    qb.push(" AND MAX(\"updated_at\") IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
+            }
+            if let Some(values) = &filter.not_in {
+                if !values.is_empty() {
+                    qb.push(" AND MAX(\"updated_at\") NOT IN (");
+                    {
+                        let mut sep = qb.separated(", ");
+                        for v in values {
+                            sep.push_bind(v.clone());
+                        }
+                    }
+                    qb.push(")");
+                }
             }
         }
         if let Some(conditions) = &self.and {
