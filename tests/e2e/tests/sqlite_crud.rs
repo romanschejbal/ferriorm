@@ -1355,6 +1355,132 @@ async fn d4_int_in_with_empty_vec_is_empty_set() {
     assert!(lenient.is_empty());
 }
 
+/// D4b: exercise the IN / NOT IN fragments that codegen now emits, using
+/// the same `sqlx::QueryBuilder` mechanism the generated `build_where`
+/// uses. Mirrors the `gen_in_arms_lhs` output:
+///
+/// - non-empty `r#in`  -> `AND "col" IN (?, ?, ...)`
+/// - empty     `r#in`  -> `AND 1 = 0`            (portable empty-set)
+/// - non-empty `not_in` -> `AND "col" NOT IN (?, ?, ...)`
+/// - empty     `not_in` -> nothing emitted       (vacuously true)
+#[tokio::test]
+async fn d4b_int_in_and_not_in_via_query_builder() {
+    let pool = setup_db().await;
+    insert_user(&pool, "u1", "a@x.com", Some("A"), 1, true).await;
+    insert_user(&pool, "u2", "b@x.com", Some("B"), 2, true).await;
+    insert_user(&pool, "u3", "c@x.com", Some("C"), 3, true).await;
+
+    // ── Helper: build "SELECT id FROM users WHERE 1=1 ..." then execute.
+    async fn ids_for(
+        pool: &SqlitePool,
+        push: impl FnOnce(&mut sqlx::QueryBuilder<'_, sqlx::Sqlite>),
+    ) -> Vec<String> {
+        let mut qb: sqlx::QueryBuilder<sqlx::Sqlite> =
+            sqlx::QueryBuilder::new(r#"SELECT "id" FROM "users" WHERE 1=1"#);
+        push(&mut qb);
+        qb.push(r#" ORDER BY "id""#);
+        qb.build_query_scalar::<String>()
+            .fetch_all(pool)
+            .await
+            .expect("query")
+    }
+
+    // Non-empty IN: ages [1, 3] -> rows u1, u3.
+    let ids = ids_for(&pool, |qb| {
+        let values = vec![1_i64, 3_i64];
+        qb.push(r#" AND "age" IN ("#);
+        {
+            let mut sep = qb.separated(", ");
+            for v in &values {
+                sep.push_bind(*v);
+            }
+        }
+        qb.push(")");
+    })
+    .await;
+    assert_eq!(ids, vec!["u1".to_string(), "u3".to_string()]);
+
+    // Empty IN -> `1 = 0` -> zero rows. This is the Postgres-portable form.
+    let ids = ids_for(&pool, |qb| {
+        let values: Vec<i64> = Vec::new();
+        if values.is_empty() {
+            qb.push(" AND 1 = 0");
+        } else {
+            qb.push(r#" AND "age" IN ("#);
+            {
+                let mut sep = qb.separated(", ");
+                for v in &values {
+                    sep.push_bind(*v);
+                }
+            }
+            qb.push(")");
+        }
+    })
+    .await;
+    assert!(
+        ids.is_empty(),
+        "empty IN must yield zero rows via the `1 = 0` form"
+    );
+
+    // Non-empty NOT IN: exclude ages [1] -> rows u2, u3.
+    let ids = ids_for(&pool, |qb| {
+        let values = vec![1_i64];
+        qb.push(r#" AND "age" NOT IN ("#);
+        {
+            let mut sep = qb.separated(", ");
+            for v in &values {
+                sep.push_bind(*v);
+            }
+        }
+        qb.push(")");
+    })
+    .await;
+    assert_eq!(ids, vec!["u2".to_string(), "u3".to_string()]);
+
+    // Empty NOT IN: no fragment emitted -> all rows pass.
+    let ids = ids_for(&pool, |qb| {
+        let values: Vec<i64> = Vec::new();
+        if !values.is_empty() {
+            qb.push(r#" AND "age" NOT IN ("#);
+            {
+                let mut sep = qb.separated(", ");
+                for v in &values {
+                    sep.push_bind(*v);
+                }
+            }
+            qb.push(")");
+        }
+    })
+    .await;
+    assert_eq!(
+        ids,
+        vec!["u1".to_string(), "u2".to_string(), "u3".to_string()],
+        "empty NOT IN must be vacuously true"
+    );
+
+    // Sanity: IN over a nullable column ("name") does NOT match NULL rows,
+    // matching standard SQL semantics. This is the contract callers should
+    // expect; the IS NULL branch is composed via `equals: Some(None)`.
+    insert_user(&pool, "u4", "d@x.com", None, 4, true).await;
+    let ids = ids_for(&pool, |qb| {
+        let values = vec!["A".to_string(), "B".to_string()];
+        qb.push(r#" AND "name" IN ("#);
+        {
+            let mut sep = qb.separated(", ");
+            for v in &values {
+                sep.push_bind(v.clone());
+            }
+        }
+        qb.push(")");
+    })
+    .await;
+    assert_eq!(
+        ids,
+        vec!["u1".to_string(), "u2".to_string()],
+        "IN over a nullable column must skip NULL rows"
+    );
+}
+
 /// D5: pagination with `LIMIT 0` must succeed and return empty;
 /// `OFFSET 1_000_000` past end of table must succeed and return empty.
 #[tokio::test]

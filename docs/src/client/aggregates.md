@@ -274,6 +274,11 @@ let big_spenders = client
 The example above selects customers who placed **5 or more orders** **and**
 spent **more than $1000** in total.
 
+Each HAVING field supports the same operators as the underlying scalar filter,
+including `r#in` and `not_in`. They follow the same empty-list rules as
+[`WHERE` IN](filtering.md#in--not-in-semantics): an empty `r#in` becomes
+`HAVING ... AND 1 = 0` (no rows), and an empty `not_in` is dropped.
+
 ### Allowed Group Keys
 
 A field is groupable if it is a scalar of type `String`, `Int`, `BigInt`,

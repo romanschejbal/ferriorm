@@ -97,6 +97,8 @@ pub struct FloatFilter {
     pub gte: Option<f64>,
     pub lt: Option<f64>,
     pub lte: Option<f64>,
+    pub r#in: Option<Vec<f64>>,
+    pub not_in: Option<Vec<f64>>,
 }
 
 /// Filter operations for nullable f64 fields.
@@ -109,6 +111,8 @@ pub struct NullableFloatFilter {
     pub gte: Option<f64>,
     pub lt: Option<f64>,
     pub lte: Option<f64>,
+    pub r#in: Option<Vec<f64>>,
+    pub not_in: Option<Vec<f64>>,
 }
 
 /// Filter operations for bool fields.
@@ -136,6 +140,7 @@ pub struct DateTimeFilter {
     pub lt: Option<chrono::DateTime<chrono::Utc>>,
     pub lte: Option<chrono::DateTime<chrono::Utc>>,
     pub r#in: Option<Vec<chrono::DateTime<chrono::Utc>>>,
+    pub not_in: Option<Vec<chrono::DateTime<chrono::Utc>>>,
 }
 
 /// Filter operations for nullable `DateTime` fields.
@@ -149,6 +154,7 @@ pub struct NullableDateTimeFilter {
     pub lt: Option<chrono::DateTime<chrono::Utc>>,
     pub lte: Option<chrono::DateTime<chrono::Utc>>,
     pub r#in: Option<Vec<chrono::DateTime<chrono::Utc>>>,
+    pub not_in: Option<Vec<chrono::DateTime<chrono::Utc>>>,
 }
 
 /// Filter operations for enum fields (generic over the enum type).

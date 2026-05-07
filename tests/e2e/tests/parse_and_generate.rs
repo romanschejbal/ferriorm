@@ -294,6 +294,83 @@ fn generated_code_contains_expected_structures() {
     );
 }
 
+/// `WhereInput` filter codegen must emit `IN (...)` / `NOT IN (...)` for
+/// `r#in` and `not_in`, with empty `r#in` collapsing to `WHERE 1 = 0` so
+/// the query is portable across SQLite and Postgres (Postgres rejects bare
+/// `IN ()`). Empty `not_in` is dropped (vacuously true) and so does not
+/// emit a fragment. Coverage spans scalars (string, int, datetime), the
+/// enum filter (whose WHERE arms were previously not emitted at all), and
+/// the HAVING surface where `COUNT(*) IN (...)` and `AVG("col") IN (...)`
+/// also need the same shape.
+#[test]
+fn generated_where_input_emits_in_and_not_in() {
+    let schema =
+        ferriorm_parser::parse_and_validate(SCHEMA).expect("parse_and_validate should succeed");
+
+    let tmp_dir = tempfile::tempdir().expect("create temp dir");
+    let output_dir = tmp_dir.path().join("generated");
+
+    ferriorm_codegen::generator::generate(&schema, &output_dir)
+        .expect("code generation should succeed");
+
+    let user_content = std::fs::read_to_string(output_dir.join("user.rs")).unwrap();
+
+    // The generated source contains Rust string literals like
+    // `" AND \"email\" IN ("`, so column-name asserts have to match the
+    // escaped quotes.
+    // Scalar columns get IN/NOT IN.
+    assert!(
+        user_content.contains(r#"\"email\" IN ("#),
+        "user.rs should emit `\\\"email\\\" IN (` for StringFilter.r#in"
+    );
+    assert!(
+        user_content.contains(r#"\"email\" NOT IN ("#),
+        "user.rs should emit `\\\"email\\\" NOT IN (` for StringFilter.not_in"
+    );
+    assert!(
+        user_content.contains(r#"\"age\" IN ("#),
+        "user.rs should emit `\\\"age\\\" IN (` for IntFilter.r#in"
+    );
+    assert!(
+        user_content.contains(r#"\"created_at\" IN ("#),
+        "user.rs should emit `\\\"created_at\\\" IN (` for DateTimeFilter.r#in"
+    );
+
+    // Enum columns: `status` uses EnumFilter and was previously skipped by
+    // gen_where_arms entirely. IN / NOT IN must now appear -- this is the
+    // most distinctive evidence that the enum WHERE arms are emitted (the
+    // pre-existing equals/not arms use `concat!`-chunked literals, which
+    // are too brittle to grep for here).
+    assert!(
+        user_content.contains(r#"\"status\" IN ("#),
+        "user.rs should emit `\\\"status\\\" IN (` for EnumFilter.r#in"
+    );
+    assert!(
+        user_content.contains(r#"\"status\" NOT IN ("#),
+        "user.rs should emit `\\\"status\\\" NOT IN (` for EnumFilter.not_in"
+    );
+
+    // Empty `r#in` collapses to the portable empty-set form.
+    assert!(
+        user_content.contains(" AND 1 = 0"),
+        "user.rs should emit `AND 1 = 0` for empty r#in lists"
+    );
+
+    // HAVING IN: COUNT(*) and AVG("col") both need the same shape.
+    assert!(
+        user_content.contains("COUNT(*) IN ("),
+        "user.rs should emit `COUNT(*) IN (` for HAVING count.r#in"
+    );
+    assert!(
+        user_content.contains("COUNT(*) NOT IN ("),
+        "user.rs should emit `COUNT(*) NOT IN (` for HAVING count.not_in"
+    );
+    assert!(
+        user_content.contains(r#"AVG(\"age\") IN ("#),
+        "user.rs should emit `AVG(\\\"age\\\") IN (` for HAVING avg_age.r#in"
+    );
+}
+
 #[test]
 fn parse_invalid_schema_returns_error() {
     let invalid = r#"
